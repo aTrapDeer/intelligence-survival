@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --foreground: #00ff00;
+  --terminal-green: #00ff00;
+  --terminal-amber: #ffaa00;
+  --terminal-red: #ff0000;
+  --terminal-white: #ffffff;
+  --terminal-gray: #808080;
 }
 
 @theme inline {
@@ -12,15 +17,137 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-mono), 'Courier New', monospace;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Terminal styling */
+.terminal {
+  background: #000000;
+  color: #00ff00;
+  font-family: var(--font-geist-mono), 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.terminal-header {
+  background: #1a1a1a;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-bottom: 1px solid #333;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.terminal-content {
+  padding: 20px;
+  min-height: calc(100vh - 60px);
+}
+
+.message-user {
+  color: #ffaa00;
+}
+
+.message-system {
+  color: #00ff00;
+}
+
+.message-error {
+  color: #ff0000;
+}
+
+.message-info {
+  color: #ffffff;
+}
+
+.terminal-input {
+  background: transparent;
+  border: none;
+  color: #00ff00;
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.terminal-input::placeholder {
+  color: #808080;
+}
+
+.terminal-button {
+  background: transparent;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.terminal-button:hover {
+  background: #00ff00;
+  color: #000000;
+}
+
+.terminal-button:disabled {
+  border-color: #808080;
+  color: #808080;
+  cursor: not-allowed;
+}
+
+.terminal-button:disabled:hover {
+  background: transparent;
+  color: #808080;
+}
+
+.blinking-cursor::after {
+  content: '█';
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.scanlines {
+  position: relative;
+}
+
+.scanlines::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 0, 0.03) 2px,
+    rgba(0, 255, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+.typing-animation {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typing 2s steps(40, end);
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
 }
