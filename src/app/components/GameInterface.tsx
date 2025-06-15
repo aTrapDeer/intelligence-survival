@@ -21,6 +21,25 @@ interface GameState {
   isGeneratingMission: boolean;
 }
 
+// Format classified responses for better readability
+const formatClassifiedResponse = (content: string): string => {
+  return content
+    // Add spacing after main headers
+    .replace(/(\[CLASSIFIED[^\]]*\])/g, '$1\n')
+    .replace(/(Decision Assessment:)/g, '\n$1')
+    .replace(/(Threat Level:)/g, '\n$1')
+    .replace(/(Intelligence Picture:)/g, '\n$1')
+    .replace(/(Next Phase:)/g, '\n$1')
+    .replace(/(OPSEC Reminders:)/g, '\n$1')
+    // Add spacing around numbered lists
+    .replace(/(\d+\.\s)/g, '\n$1')
+    // Add spacing around bullet points
+    .replace(/(•\s)/g, '\n$1')
+    // Clean up excessive newlines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 export default function GameInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentInput, setCurrentInput] = useState('');
@@ -219,7 +238,9 @@ export default function GameInterface() {
           }));
         }
 
-        addMessage('classified', content);
+        // Format the classified response for better readability
+        const formattedContent = formatClassifiedResponse(content);
+        addMessage('classified', formattedContent);
         
         if (!isOperationallySound && content.includes('[OPERATIONALLY COMPROMISED]')) {
           addMessage('error', 'CIA OPERATIONAL SECURITY BREACH - Revise approach per CIA protocols.');
@@ -322,7 +343,7 @@ export default function GameInterface() {
                 message.type === 'user' ? 'message-user' :
                 message.type === 'system' ? 'message-system' :
                 message.type === 'error' ? 'message-error' :
-                message.type === 'classified' ? 'text-terminal-amber font-bold' :
+                message.type === 'classified' ? 'text-terminal-amber font-bold whitespace-pre-wrap' :
                 message.type === 'mission' ? 'text-terminal-white bg-gray-900 p-4 rounded border-l-4 border-terminal-amber whitespace-pre-wrap' :
                 'message-info'
               }`}>
