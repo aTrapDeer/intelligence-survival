@@ -104,6 +104,13 @@ MISSION PROGRESSION TRACKING:
 - Progress logically through mission phases without repetition
 - Escalate threat levels appropriately based on operative actions
 - Guide toward mission resolution within expected timeline
+- CRITICAL: Missions MUST conclude by round {MAX_ROUNDS} with one of the four outcomes
+
+ROUND LIMITS AND MISSION TERMINATION:
+- Current Round: {CURRENT_ROUND} of {MAX_ROUNDS} maximum
+- If round >= {MAX_ROUNDS}: FORCE mission conclusion with appropriate outcome
+- If round >= {MAX_ROUNDS * 0.8}: Begin wrapping up mission phases
+- Always provide exactly 4 decision options unless mission is ending
 
 OPERATIONAL GUIDELINES:
 - Player is always a CIA operative serving US interests
@@ -133,7 +140,7 @@ Intelligence Picture:
 Operational Status:
 [Describe current situation and what happens as a result of the player's decision. Advance the narrative toward the next logical step in the current phase or transition to next phase if phase objectives are met.]
 
-DECISION OPTIONS:
+DECISION OPTIONS (if mission continues):
 Generate exactly 4 tactical options for the operative to choose from:
 
 OPTION 1: [Low-risk, conventional CIA approach - safer but may be less effective]  
@@ -151,13 +158,11 @@ Each option should:
 
 OPSEC Reminders: [Critical security protocols for current phase]
 
-MISSION PROGRESSION RULES:
-- Each round must advance the mission meaningfully
-- Do not repeat identical scenarios or decision points
-- Escalate complexity and stakes as mission progresses
-- Transition between mission phases when phase objectives are met
-- Guide toward one of the four predetermined outcomes based on operative performance
-- Mission should conclude within 6-12 rounds depending on complexity
+MISSION TERMINATION CONDITIONS:
+- AUTOMATIC TERMINATION: If current round >= {MAX_ROUNDS}, conclude with appropriate outcome
+- EARLY SUCCESS: Mission objectives achieved before max rounds
+- EARLY FAILURE: Cover blown, operative compromised, or mission critically failed
+- FORCED CONCLUSION: If mission dragging, force resolution to prevent endless gameplay
 
 CIA EVALUATION CRITERIA:
 - Operational Security (OPSEC) per CIA standards
@@ -169,9 +174,13 @@ CIA EVALUATION CRITERIA:
 - Compliance with CIA legal and operational guidelines
 - Phase-appropriate decision making
 
-Reject unrealistic Hollywood-style actions. Maintain CIA documentary-level authenticity. Always remember: you are CIA, serving US national security interests.
+IMPORTANT: 
+- Always mark decisions as [OPERATIONALLY SOUND] unless they violate CIA protocols
+- Provide exactly 4 decision options unless the mission is ending
+- Force mission conclusion if at or near round limit
+- Custom user input should generally be treated as [OPERATIONALLY SOUND] if it shows good operational thinking
 
-IMPORTANT: Always provide exactly 4 decision options at the end of every operational response. Custom user input should be treated as less operationally sound than the provided options unless it demonstrates exceptional operational thinking.`;
+Reject unrealistic Hollywood-style actions. Maintain CIA documentary-level authenticity. Always remember: you are CIA, serving US national security interests.`;
 
 // Extract player-facing mission briefing (hide sensitive operational details)
 function extractPlayerBriefing(fullBriefing: string): string {
@@ -199,27 +208,53 @@ function extractPlayerBriefing(fullBriefing: string): string {
       continue;
     }
     
-    // Keep essential sections visible
-    if (line.includes('OPERATION CODENAME:') ||
-        line.includes('MISSION TYPE:') ||
-        line.includes('TARGET COUNTRY:') ||
-        line.includes('INTELLIGENCE OBJECTIVE:') ||
-        line.includes('COVER IDENTITY:') ||
-        line.includes('EQUIPMENT/RESOURCES:') ||
-        line.startsWith('=== CIA MISSION BRIEFING')) {
-      inHiddenSection = false;
-    }
-    
     if (!inHiddenSection) {
       playerVisibleSections.push(line);
     }
   }
   
-  // Add mission acceptance prompt
-  playerVisibleSections.push('');
-  playerVisibleSections.push('CIA Operative, do you accept this mission? Type "ACCEPT" to begin operations or "REGENERATE" for a new assignment.');
+  return playerVisibleSections.join('\n').trim();
+}
+
+// Strip decision options from response to avoid duplication in UI
+function stripDecisionOptionsFromResponse(response: string): string {
+  const lines = response.split('\n');
+  const cleanedLines = [];
+  let inDecisionSection = false;
   
-  return playerVisibleSections.join('\n');
+  for (const line of lines) {
+    // Start stripping from DECISION OPTIONS line
+    if (line.includes('DECISION OPTIONS')) {
+      inDecisionSection = true;
+      continue;
+    }
+    
+    // Also strip individual option lines regardless of section
+    if (line.match(/^OPTION \d+:/)) {
+      inDecisionSection = true;
+      continue;
+    }
+    
+    // Stop stripping at OPSEC Reminders and include them
+    if (line.includes('OPSEC Reminders:')) {
+      inDecisionSection = false;
+      cleanedLines.push(line);
+      continue;
+    }
+    
+    // Skip lines that are clearly decision options or their descriptions
+    if (inDecisionSection || 
+        line.match(/^OPTION \d+:/) || 
+        line.includes('Risk/Reward:') ||
+        line.trim().startsWith('–') ||
+        line.trim().startsWith('•') && inDecisionSection) {
+      continue;
+    }
+    
+    cleanedLines.push(line);
+  }
+  
+  return cleanedLines.join('\n').trim();
 }
 
 // Extract decision options from AI response
@@ -280,8 +315,9 @@ function estimateMissionRounds(missionContent: string): number {
   const phaseMatches = missionContent.match(/PHASE \d+:/g);
   const phaseCount = phaseMatches ? phaseMatches.length : 5;
   
-  // Estimate 1-2 rounds per phase plus setup and conclusion
-  return Math.min(Math.max(phaseCount * 1.5 + 2, 6), 12);
+  // More conservative estimate: 1-1.5 rounds per phase plus setup and conclusion
+  // Cap at 10 rounds to prevent overly long missions
+  return Math.min(Math.max(Math.ceil(phaseCount * 1.2) + 2, 6), 10);
 }
 
 export async function POST(req: NextRequest) {
@@ -358,14 +394,36 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Get mission session details for round limits
+    let maxRounds = 10; // default
+    let currentRound = roundNumber || 1;
+    
+    if (missionSessionId) {
+      try {
+        const session = await dbOperations.getMissionSession(missionSessionId);
+        if (session) {
+          maxRounds = session.max_rounds;
+          currentRound = Math.max(currentRound, session.current_round);
+        }
+      } catch (error) {
+        console.error('Error fetching mission session:', error);
+      }
+    }
+
+    // Force mission conclusion if at or past round limit
+    const shouldForceConclusion = currentRound >= maxRounds;
+    const isNearingEnd = currentRound >= Math.floor(maxRounds * 0.8);
+
     // Handle gameplay interactions with enhanced tracking
-    const enhancedSystemPrompt = `${GAMEPLAY_SYSTEM_PROMPT}
+    const enhancedSystemPrompt = `${GAMEPLAY_SYSTEM_PROMPT.replace('{MAX_ROUNDS}', maxRounds.toString()).replace('{CURRENT_ROUND}', currentRound.toString()).replace('{MAX_ROUNDS * 0.8}', Math.floor(maxRounds * 0.8).toString())}
 
 FULL MISSION CONTEXT (CLASSIFIED - FOR GAME MASTER USE ONLY):
 ${fullMissionDetails || 'Mission context not available'}
 
-CURRENT ROUND: ${roundNumber || 1}
+CURRENT ROUND: ${currentRound} of ${maxRounds} MAXIMUM
 TOTAL GAME HISTORY: ${gameHistory?.length || 0} interactions
+${shouldForceConclusion ? '\n⚠️ MISSION TERMINATION REQUIRED - ROUND LIMIT REACHED - CONCLUDE WITH APPROPRIATE OUTCOME ⚠️' : ''}
+${isNearingEnd ? '\n🔔 MISSION NEARING END - BEGIN CONCLUSION PHASES' : ''}
 
 Use this full mission information to:
 - Track player progress through specific mission phases
@@ -375,6 +433,7 @@ Use this full mission information to:
 - Maintain consistent mission parameters throughout gameplay
 - Ensure no repetition of previous scenarios or decision points
 - Progress toward one of the four predetermined outcomes based on performance
+${shouldForceConclusion ? '- FORCE IMMEDIATE MISSION CONCLUSION WITH OUTCOME A/B/C/D' : ''}
 
 DECISION CONTEXT: Player selected ${selectedOption ? `Option ${selectedOption}` : 'custom input'}: "${message}"
 
@@ -392,10 +451,58 @@ IMPORTANT: Never reveal the full mission details, phases, or outcomes to the pla
       max_completion_tokens: 2500
     });
 
-    const response = completion.choices[0]?.message?.content || 'No response generated.';
+    let response = completion.choices[0]?.message?.content;
     
-    // Extract decision options from the response
+    // Handle API failures more gracefully
+    if (!response) {
+      console.error('No content in OpenAI response. Finish reason:', completion.choices[0]?.finish_reason);
+      const errorResponse = `[CLASSIFIED - CIA EYES ONLY]
+
+MISSION PHASE: TECHNICAL DIFFICULTIES
+PHASE OBJECTIVE: Restore communications
+
+Decision Assessment: [OPERATIONALLY COMPROMISED]
+
+Threat Level: CONDITION YELLOW
+
+Intelligence Picture:
+• CIA communication systems experiencing technical difficulties
+• Secure channel temporarily degraded
+• Mission parameters remain unchanged
+
+Operational Status:
+CIA technical teams are working to restore full communication capabilities. Stand by for further instructions.
+
+DECISION OPTIONS:
+OPTION 1: Wait for communication restoration and maintain current position [LOW risk]
+OPTION 2: Continue with last known mission parameters and adapt as needed [MEDIUM risk]  
+OPTION 3: Initiate emergency extraction protocols if situation deteriorates [HIGH risk]
+OPTION 4: Attempt to re-establish secure communications through alternate channels [MEDIUM risk]
+
+OPSEC Reminders: Maintain cover identity and avoid exposure during communication blackout.`;
+      
+      return NextResponse.json({
+        response: errorResponse,
+        decisionOptions: [
+          {id: 1, text: "Wait for communication restoration and maintain current position", riskLevel: "LOW"},
+          {id: 2, text: "Continue with last known mission parameters and adapt as needed", riskLevel: "MEDIUM"},
+          {id: 3, text: "Initiate emergency extraction protocols if situation deteriorates", riskLevel: "HIGH"},
+          {id: 4, text: "Attempt to re-establish secure communications through alternate channels", riskLevel: "MEDIUM"}
+        ],
+        missionPhase: { phase: "TECHNICAL DIFFICULTIES", objective: "Restore communications" },
+        isOperationallySound: false,
+        threatLevel: "YELLOW",
+        missionEnded: false,
+        progressionSuggestions: ["Try regenerating the response", "Check internet connection"],
+        riskAssessment: 'MEDIUM'
+      });
+    }
+    
+    // Extract decision options from the response and then remove them from display
     const decisionOptions = extractDecisionOptions(response);
+    
+    // Strip decision options from response to avoid duplication in UI
+    response = stripDecisionOptionsFromResponse(response);
     
     // Extract mission phase information
     const missionPhase = extractMissionPhase(response);
@@ -443,10 +550,11 @@ IMPORTANT: Never reveal the full mission details, phases, or outcomes to the pla
       });
     }
     
-    // Check for mission end
+    // Check for mission end - enhanced detection
     const missionEnd = response.includes('OUTCOME A') || response.includes('OUTCOME B') || 
                        response.includes('OUTCOME C') || response.includes('OUTCOME D') ||
-                       response.includes('MISSION COMPLETE') || response.includes('OPERATION TERMINATED');
+                       response.includes('MISSION COMPLETE') || response.includes('OPERATION TERMINATED') ||
+                       shouldForceConclusion; // Force end if round limit reached
     
     if (missionEnd && missionSessionId) {
       // Determine outcome and success score
@@ -465,6 +573,18 @@ IMPORTANT: Never reveal the full mission details, phases, or outcomes to the pla
       } else if (response.includes('OUTCOME D')) {
         outcome = 'D';
         successScore = Math.floor(Math.random() * 30); // 0-30
+      } else if (shouldForceConclusion) {
+        // If forced conclusion due to round limit, determine outcome based on current threat level
+        if (threatLevel === 'GREEN') {
+          outcome = 'B'; // Partial success - ran out of time but stable
+          successScore = 60 + Math.floor(Math.random() * 15); // 60-75
+        } else if (threatLevel === 'YELLOW') {
+          outcome = 'C'; // Mission failure but safe extraction
+          successScore = 35 + Math.floor(Math.random() * 15); // 35-50
+        } else {
+          outcome = 'D'; // Critical failure due to time limit
+          successScore = Math.floor(Math.random() * 25); // 0-25
+        }
       }
       
       await dbOperations.updateMissionSession(missionSessionId, {

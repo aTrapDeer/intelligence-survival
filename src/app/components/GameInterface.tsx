@@ -248,14 +248,25 @@ export default function GameInterface() {
         const formattedContent = formatClassifiedResponse(content);
         addMessage('classified', formattedContent);
         
-        if (!isOperationallySound) {
+        // Only show operational security breach for severe violations, not minor ones
+        if (!isOperationallySound && (content.includes('COMPROMISED') || content.includes('CRITICAL'))) {
           addMessage('error', 'CIA OPERATIONAL SECURITY BREACH - Approach requires revision per CIA protocols.');
+        } else if (!isOperationallySound) {
+          addMessage('info', '⚠️ CAUTION: Decision noted as non-standard by CIA protocols. Proceed with awareness.');
         }
 
         // Show decision options if mission continues
         if (!missionEnded && decisionOptions.length > 0) {
           addMessage('system', '');
           addMessage('info', '=== TACTICAL DECISION REQUIRED ===');
+          
+          // Check if mission is approaching time limit
+          if (gameState.round >= 8) {
+            addMessage('info', '⏰ WARNING: Mission timeline critical - immediate resolution required');
+          } else if (gameState.round >= 6) {
+            addMessage('info', '🔔 NOTICE: Mission approaching time constraints - begin conclusion phases');
+          }
+          
           addMessage('info', 'Select from the following CIA-approved operational options, or choose "Custom Response" for advanced operatives:');
         }
 
@@ -279,10 +290,25 @@ export default function GameInterface() {
             outcome = 'C';
             successScore = 40;
             addMessage('info', '⚠️ MISSION FAILURE - OUTCOME C: Operative extracted safely');
-          } else {
+          } else if (content.includes('OUTCOME D')) {
             outcome = 'D';
             successScore = 10;
             addMessage('error', '❌ CRITICAL FAILURE - OUTCOME D: Serious consequences for US interests');
+          } else {
+            // Handle cases where mission ended due to round limit or other factors
+            if (threatLevel === 'GREEN') {
+              outcome = 'B';
+              successScore = 65;
+              addMessage('info', '✅ MISSION TIMEOUT - OUTCOME B: Time limit reached, partial objectives achieved');
+            } else if (threatLevel === 'YELLOW') {
+              outcome = 'C';
+              successScore = 40;
+              addMessage('info', '⚠️ MISSION TIMEOUT - OUTCOME C: Time limit reached, safe extraction');
+            } else {
+              outcome = 'D';
+              successScore = 15;
+              addMessage('error', '❌ MISSION TIMEOUT - OUTCOME D: Time limit reached under compromised conditions');
+            }
           }
 
           setGameState(prev => ({
@@ -382,9 +408,9 @@ export default function GameInterface() {
       case 'info':
         return 'text-blue-400 font-semibold';
       case 'classified':
-        return 'text-amber-300 bg-black/50 p-4 rounded border border-amber-600/50 font-mono whitespace-pre-line';
+        return 'text-amber-300 bg-black/50 p-2 sm:p-4 rounded border border-amber-600/50 font-mono whitespace-pre-line text-xs sm:text-sm';
       case 'mission':
-        return 'text-green-300 bg-green-900/20 p-4 rounded border border-green-600/50 whitespace-pre-line';
+        return 'text-green-300 bg-green-900/20 p-2 sm:p-4 rounded border border-green-600/50 whitespace-pre-line text-xs sm:text-sm';
       default:
         return 'text-gray-300';
     }
@@ -399,8 +425,8 @@ export default function GameInterface() {
   };
 
   const UserProfile = () => (
-    <div className="flex items-center space-x-3 bg-gray-900/50 border border-gray-600 rounded-lg p-3">
-      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-700">
+    <div className="flex items-center space-x-2 sm:space-x-3 bg-gray-900/50 border border-gray-600 rounded-lg p-2 sm:p-3">
+      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
         {user?.user_metadata?.avatar_url ? (
           <Image 
             src={user.user_metadata.avatar_url} 
@@ -415,51 +441,53 @@ export default function GameInterface() {
           </div>
         )}
       </div>
-      <div className="text-right">
-        <div className="text-sm text-white font-medium">
+      <div className="text-left sm:text-right flex-1 min-w-0">
+        <div className="text-xs sm:text-sm text-white font-medium truncate">
           {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Agent'}
         </div>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-gray-400 hidden sm:block">
           Clearance: TOP SECRET
         </div>
       </div>
       <button
         onClick={handleLogout}
-        className="text-red-400 hover:text-red-300 text-xs px-2 py-1 border border-red-600 rounded hover:bg-red-900/20 transition-colors"
+        className="text-red-400 hover:text-red-300 text-xs px-1 sm:px-2 py-1 border border-red-600 rounded hover:bg-red-900/20 transition-colors flex-shrink-0"
       >
-        LOGOUT
+        EXIT
       </button>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-black text-green-400 font-mono">
-      <div className="container mx-auto max-w-6xl p-4">
+      <div className="container mx-auto max-w-6xl p-2 sm:p-4">
         {/* Header */}
-        <div className="border-b border-green-600 pb-4 mb-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-green-400">CIA OPERATIONS TERMINAL</h1>
-              <p className="text-sm text-gray-400">CLASSIFIED - EYES ONLY</p>
+        <div className="border-b border-green-600 pb-2 sm:pb-4 mb-4 sm:mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 lg:gap-0">
+            <div className="flex-1">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-green-400">CIA OPERATIONS</h1>
+              <p className="text-xs sm:text-sm text-gray-400">CLASSIFIED - EYES ONLY</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className={`text-lg font-bold ${getStatusColor(gameState.operationalStatus)}`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
+              <div className="text-left sm:text-right">
+                <div className={`text-sm sm:text-lg font-bold ${getStatusColor(gameState.operationalStatus)}`}>
                   CONDITION {gameState.operationalStatus}
                 </div>
                 {gameState.isGameActive && (
-                  <div className="text-sm text-gray-400">
+                  <div className="text-xs sm:text-sm text-gray-400">
                     ROUND {gameState.round} | SESSION: {gameState.missionSessionId?.slice(-8)}
                   </div>
                 )}
               </div>
-              <UserProfile />
+              <div className="w-full sm:w-auto">
+                <UserProfile />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Messages */}
-        <div className="space-y-4 mb-6 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6 max-h-[50vh] sm:max-h-[60vh] overflow-y-auto">
           {messages.map((message, index) => (
             <div key={index} className="flex flex-col">
               <div className="text-xs text-gray-500 mb-1">
@@ -486,49 +514,49 @@ export default function GameInterface() {
 
         {/* Decision Options */}
         {gameState.isWaitingForDecision && gameState.currentDecisionOptions.length > 0 && (
-          <div className="mb-6 p-4 border border-yellow-600/50 bg-yellow-900/10 rounded">
-            <h3 className="text-yellow-400 font-bold mb-4">TACTICAL OPTIONS:</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 border border-yellow-600/50 bg-yellow-900/10 rounded">
+            <h3 className="text-yellow-400 font-bold mb-3 sm:mb-4 text-sm sm:text-base">TACTICAL OPTIONS:</h3>
+            <div className="grid grid-cols-1 gap-2 sm:gap-3 mb-3 sm:mb-4">
               {gameState.currentDecisionOptions.map((option) => (
                 <button
                   key={option.id}
                   onClick={() => selectOption(option)}
                   disabled={isLoading}
-                  className={`p-3 rounded border-2 transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed ${getRiskColor(option.riskLevel)}`}
+                  className={`p-2 sm:p-3 rounded border-2 transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed ${getRiskColor(option.riskLevel)}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-white">OPTION {option.id}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
+                  <div className="flex justify-between items-start mb-1 sm:mb-2">
+                    <span className="font-bold text-white text-sm sm:text-base">OPTION {option.id}</span>
+                    <span className={`text-xs px-1 sm:px-2 py-1 rounded flex-shrink-0 ml-2 ${
                       option.riskLevel === 'LOW' ? 'bg-green-900/50 text-green-300' :
                       option.riskLevel === 'MEDIUM' ? 'bg-yellow-900/50 text-yellow-300' :
                       'bg-red-900/50 text-red-300'
                     }`}>
-                      {option.riskLevel} RISK
+                      {option.riskLevel}
                     </span>
                   </div>
-                  <p className="text-gray-300 text-sm">{option.text}</p>
+                  <p className="text-gray-300 text-xs sm:text-sm">{option.text}</p>
                 </button>
               ))}
             </div>
             
-            <div className="border-t border-gray-600 pt-4">
+            <div className="border-t border-gray-600 pt-3 sm:pt-4">
               <button
                 onClick={() => setGameState(prev => ({ ...prev, showCustomInput: !prev.showCustomInput }))}
                 disabled={isLoading}
-                className="px-4 py-2 bg-purple-900/50 text-purple-300 border border-purple-600 rounded hover:bg-purple-800/50 transition-colors disabled:opacity-50"
+                className="px-3 sm:px-4 py-2 bg-purple-900/50 text-purple-300 border border-purple-600 rounded hover:bg-purple-800/50 transition-colors disabled:opacity-50 text-xs sm:text-sm"
               >
-                {gameState.showCustomInput ? 'Hide Custom Response' : 'Advanced: Custom Response'}
+                {gameState.showCustomInput ? 'Hide Custom' : 'Custom Response'}
               </button>
               <p className="text-xs text-gray-500 mt-1">
-                ⚠️ Custom responses may be less operationally sound than provided options
+                ⚠️ Custom responses may be less operationally sound
               </p>
             </div>
           </div>
         )}
 
         {/* Input Area */}
-        <div className="border-t border-green-600 pt-4">
-          <div className="flex space-x-2">
+        <div className="border-t border-green-600 pt-3 sm:pt-4">
+          <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-1">
               <input
                 type="text"
@@ -538,47 +566,47 @@ export default function GameInterface() {
                 disabled={gameState.isWaitingForDecision && !gameState.showCustomInput}
                 placeholder={
                   gameState.isWaitingForDecision && !gameState.showCustomInput
-                    ? "Select a tactical option above or choose Custom Response..."
+                    ? "Select tactical option above..."
                     : !gameState.isGameActive && !gameState.missionCompleted
                     ? "Type command (ACCEPT, REGENERATE, QUIT)..."
                     : gameState.missionCompleted
-                    ? "Type NEW MISSION to start fresh or QUIT to disconnect..."
-                    : "Enter your custom operational decision..."
+                    ? "Type NEW MISSION or QUIT..."
+                    : "Enter custom decision..."
                 }
-                className="w-full bg-black border border-green-600 text-green-400 px-4 py-2 rounded focus:outline-none focus:border-green-400 disabled:opacity-50 disabled:bg-gray-900"
+                className="w-full bg-black border border-green-600 text-green-400 px-3 sm:px-4 py-2 rounded focus:outline-none focus:border-green-400 disabled:opacity-50 disabled:bg-gray-900 text-sm sm:text-base"
               />
             </div>
             
-            {!gameState.isGameActive && !gameState.missionCompleted && (
-              <>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-0 sm:space-x-2">
+              {!gameState.isGameActive && !gameState.missionCompleted && (
                 <button
                   onClick={startGame}
                   disabled={gameState.isGeneratingMission}
-                  className="px-6 py-2 bg-green-900 text-green-400 border border-green-600 rounded hover:bg-green-800 transition-colors disabled:opacity-50"
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-900 text-green-400 border border-green-600 rounded hover:bg-green-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
                 >
                   START MISSION
                 </button>
-              </>
-            )}
-            
-            {gameState.showCustomInput && (
-              <button
-                onClick={submitCustomInput}
-                disabled={isLoading || !currentInput.trim()}
-                className="px-6 py-2 bg-purple-900 text-purple-400 border border-purple-600 rounded hover:bg-purple-800 transition-colors disabled:opacity-50"
-              >
-                EXECUTE
-              </button>
-            )}
+              )}
+              
+              {gameState.showCustomInput && (
+                <button
+                  onClick={submitCustomInput}
+                  disabled={isLoading || !currentInput.trim()}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-purple-900 text-purple-400 border border-purple-600 rounded hover:bg-purple-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
+                >
+                  EXECUTE
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="mt-2 text-xs text-gray-500">
             {gameState.isGameActive ? (
-              <>Mission in progress • Round {gameState.round} • Press Enter to submit custom input</>
+              <>Mission • Round {gameState.round} • Press Enter</>
             ) : gameState.missionCompleted ? (
-              <>Mission completed • Type &quot;NEW MISSION&quot; or &quot;QUIT&quot;</>
+              <>Mission completed • Type NEW MISSION or QUIT</>
             ) : (
-              <>CIA Terminal ready • Type commands or click START MISSION</>
+              <>CIA Terminal ready • START MISSION</>
             )}
           </div>
         </div>
