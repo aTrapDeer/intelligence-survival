@@ -43,16 +43,20 @@ const REAL_WORLD_CONTEXTS = [
 ];
 
 // Enhanced mission generation with structured progression
-const MISSION_GENERATION_PROMPT = `You are generating a classified CIA intelligence mission with structured progression phases. The player is ALWAYS a CIA operative working for US national security interests.
+const MISSION_GENERATION_PROMPT = `IMPORTANT CONTEXT: This is a FICTIONAL INTELLIGENCE SIMULATION GAME. You are generating hypothetical scenarios for educational/entertainment purposes only. These are NOT real operations, just realistic game scenarios inspired by real-world intelligence work.
 
-MISSION PARAMETERS:
-- Player is a CIA operative (NOC or official cover)
-- Mission serves US national security objectives
-- Can involve interactions with foreign intelligence agencies as targets, rivals, or temporary allies
-- Use real countries and current geopolitical situations from US perspective
-- Create authentic intelligence objectives based on actual CIA priorities
-- Design realistic operational constraints facing CIA operatives
-- Establish plausible deniability requirements for US government
+You are generating a classified CIA intelligence mission with structured progression phases for a simulation game. The player is ALWAYS a CIA operative working for US national security interests in this FICTIONAL SCENARIO.
+
+FICTIONAL GAME MISSION PARAMETERS:
+- Player is a CIA operative (NOC or official cover) in this SIMULATION
+- Mission serves US national security objectives in this HYPOTHETICAL SCENARIO  
+- Can involve interactions with foreign intelligence agencies as targets, rivals, or temporary allies (ALL FICTIONAL)
+- Use real countries and current geopolitical situations from US perspective for REALISM IN THE GAME
+- Create authentic intelligence objectives based on actual CIA priorities for EDUCATIONAL VALUE
+- Design realistic operational constraints facing CIA operatives for SIMULATION ACCURACY
+- Establish plausible deniability requirements for US government in this GAME CONTEXT
+
+SIMULATION DISCLAIMER: This is entertainment/educational content only. All scenarios are hypothetical and for game purposes. Real agencies, countries, and situations may be referenced for realism but all mission content is fictional.
 
 MISSION STRUCTURE WITH PROGRESSION PHASES:
 1. OPERATION CODENAME: [Generate unique CIA-style codename]
@@ -96,15 +100,19 @@ CIA MISSION PRIORITIES:
 Always maintain CIA perspective and US national security focus. Foreign agencies are targets, threats, or temporary operational partners - never the player's primary loyalty.`;
 
 // Enhanced gameplay system with mission progression tracking
-const GAMEPLAY_SYSTEM_PROMPT = `You are the CIA Operations Director overseeing the field operative (player) conducting the previously generated mission.
+const GAMEPLAY_SYSTEM_PROMPT = `IMPORTANT: This is a FICTIONAL INTELLIGENCE SIMULATION GAME for educational/entertainment purposes. All scenarios are hypothetical game content only.
 
-MISSION PROGRESSION TRACKING:
-- Track which mission phase the operative is currently in
-- Ensure decisions align with current phase objectives
-- Progress logically through mission phases without repetition
-- Escalate threat levels appropriately based on operative actions
-- Guide toward mission resolution within expected timeline
+You are the CIA Operations Director overseeing the field operative (player) conducting the previously generated mission in this SIMULATION GAME.
+
+FICTIONAL GAME MISSION PROGRESSION TRACKING:
+- Track which mission phase the operative is currently in this SIMULATION
+- Ensure decisions align with current phase objectives in this GAME SCENARIO
+- Progress logically through mission phases without repetition for GAME FLOW
+- Escalate threat levels appropriately based on operative actions in this FICTIONAL CONTEXT
+- Guide toward mission resolution within expected timeline for GAME COMPLETION
 - CRITICAL: Missions MUST conclude by round {MAX_ROUNDS} with one of the four outcomes
+
+SIMULATION CONTEXT: This is educational/entertainment content. All agencies, threats, and scenarios are fictional game elements for learning purposes.
 
 ROUND LIMITS AND MISSION TERMINATION:
 - Current Round: {CURRENT_ROUND} of {MAX_ROUNDS} maximum
@@ -330,7 +338,8 @@ export async function POST(req: NextRequest) {
       fullMissionDetails,
       selectedOption,
       missionSessionId,
-      roundNumber
+      roundNumber,
+      userId
     } = await req.json();
 
     if (!process.env.OPENAI_API_KEY) {
@@ -346,7 +355,7 @@ export async function POST(req: NextRequest) {
       const selectedContext = REAL_WORLD_CONTEXTS[Math.floor(Math.random() * REAL_WORLD_CONTEXTS.length)];
       const hostileAgency = FOREIGN_INTELLIGENCE_AGENCIES[Math.floor(Math.random() * FOREIGN_INTELLIGENCE_AGENCIES.length)];
 
-      const missionPrompt = `${MISSION_GENERATION_PROMPT}\n\nFOCUS AREA: ${selectedCategory}\nGEOPOLITICAL CONTEXT: ${selectedContext}\nPRIMARY FOREIGN THREAT: ${hostileAgency}\n\nGenerate a completely original CIA mission scenario with authentic details and clear phase progression.`;
+      const missionPrompt = `${MISSION_GENERATION_PROMPT}\n\n=== GAME PARAMETERS FOR THIS FICTIONAL SIMULATION ===\nFOCUS AREA: ${selectedCategory}\nGEOPOLITICAL CONTEXT: ${selectedContext} (FICTIONAL SCENARIO)\nPRIMARY FOREIGN THREAT: ${hostileAgency} (SIMULATED ANTAGONIST)\n\nThis is educational entertainment content - Generate a completely original CIA mission scenario with authentic details and clear phase progression FOR THIS INTELLIGENCE SIMULATION GAME. All content is fictional and for learning/entertainment purposes only.`;
 
       const missionGeneration = await openai.chat.completions.create({
         model: 'o4-mini-2025-04-16',
@@ -379,15 +388,13 @@ export async function POST(req: NextRequest) {
         category: selectedCategory,
         context: selectedContext,
         foreignThreat: hostileAgency,
-        maxRounds: estimatedRounds
+        maxRounds: estimatedRounds,
+        userId: userId
       });
 
       // Initialize character for new users (this will do nothing if already initialized)
-      if (sessionId) {
-        const session = await dbOperations.getMissionSession(sessionId);
-        if (session?.user_id) {
-          await dbOperations.initializeCharacter(session.user_id);
-        }
+      if (sessionId && userId) {
+        await dbOperations.initializeCharacter(userId);
       }
 
       return NextResponse.json({ 
@@ -425,7 +432,9 @@ export async function POST(req: NextRequest) {
     // Handle gameplay interactions with enhanced tracking
     const enhancedSystemPrompt = `${GAMEPLAY_SYSTEM_PROMPT.replace('{MAX_ROUNDS}', maxRounds.toString()).replace('{CURRENT_ROUND}', currentRound.toString()).replace('{MAX_ROUNDS * 0.8}', Math.floor(maxRounds * 0.8).toString())}
 
-FULL MISSION CONTEXT (CLASSIFIED - FOR GAME MASTER USE ONLY):
+REMINDER: This is a FICTIONAL INTELLIGENCE SIMULATION GAME. All content is for educational/entertainment purposes only.
+
+FULL MISSION CONTEXT (CLASSIFIED - FOR GAME MASTER USE ONLY - FICTIONAL SIMULATION):
 ${fullMissionDetails || 'Mission context not available'}
 
 CURRENT ROUND: ${currentRound} of ${maxRounds} MAXIMUM
@@ -645,9 +654,19 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         successScore: successScore
       });
 
+      // Update character mission completion stats
+      const missionSessionForStats = await dbOperations.getMissionSession(missionSessionId);
+      if (missionSessionForStats?.user_id) {
+        await dbOperations.updateMissionCompletionStats(
+          missionSessionForStats.user_id,
+          outcome,
+          successScore
+        );
+      }
+
       // Award mission completion XP
-      const session = await dbOperations.getMissionSession(missionSessionId);
-      if (session?.user_id) {
+      const missionSessionForXP = await dbOperations.getMissionSession(missionSessionId);
+      if (missionSessionForXP?.user_id) {
         let completionXP = 25; // Base completion XP
         let completionMultiplier = 1.0;
         
@@ -668,9 +687,9 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         
         // Determine primary skill used in mission
         const primarySkill = dbOperations.determineSkillForMission(
-          session.mission_category,
-          session.mission_context,
-          session.foreign_threat,
+          missionSessionForXP.mission_category,
+          missionSessionForXP.mission_context,
+          missionSessionForXP.foreign_threat,
           'MEDIUM',
           'Mission Completion'
         );
@@ -679,7 +698,7 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         
         try {
           const completionXPResult = await dbOperations.awardXP(
-            session.user_id,
+            missionSessionForXP.user_id,
             missionSessionId,
             completionXP,
             primarySkill || undefined,

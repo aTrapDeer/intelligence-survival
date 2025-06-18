@@ -97,6 +97,50 @@ CREATE TRIGGER update_mission_sessions_updated_at
     BEFORE UPDATE ON mission_sessions
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Function to update mission completion stats
+CREATE OR REPLACE FUNCTION update_mission_completion_stats(
+  p_user_id UUID,
+  p_was_successful BOOLEAN,
+  p_success_score INTEGER
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE character_stats 
+  SET 
+    total_missions_completed = total_missions_completed + 1,
+    total_successful_missions = CASE 
+      WHEN p_was_successful THEN total_successful_missions + 1 
+      ELSE total_successful_missions 
+    END,
+    reputation_score = GREATEST(0, reputation_score + 
+      CASE 
+        WHEN p_was_successful THEN FLOOR(p_success_score / 10.0) -- Success adds reputation
+        ELSE -FLOOR((100 - p_success_score) / 20.0) -- Failure reduces reputation
+      END
+    ),
+    updated_at = NOW()
+  WHERE user_id = p_user_id;
+  
+  -- If no stats record exists, create one (shouldn't happen if character is initialized)
+  IF NOT FOUND THEN
+    INSERT INTO character_stats (
+      user_id,
+      base_level,
+      base_xp,
+      total_missions_completed,
+      total_successful_missions,
+      reputation_score
+    ) VALUES (
+      p_user_id,
+      3, -- Starting level
+      0, -- Starting XP
+      1, -- First mission completed
+      CASE WHEN p_was_successful THEN 1 ELSE 0 END,
+      GREATEST(0, FLOOR(p_success_score / 10.0))
+    );
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
 `;
 
 async function setup() {

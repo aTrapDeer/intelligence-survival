@@ -693,6 +693,30 @@ export const dbOperations = {
     }
     
     return null;
+  },
+
+  // Update character mission completion stats
+  async updateMissionCompletionStats(
+    userId: string,  
+    missionOutcome: 'A' | 'B' | 'C' | 'D',
+    successScore: number
+  ): Promise<boolean> {
+    if (!supabase) return false;
+
+    try {
+      const wasSuccessful = missionOutcome === 'A' || missionOutcome === 'B';
+      
+      const { error } = await supabase.rpc('update_mission_completion_stats', {
+        p_user_id: userId,
+        p_was_successful: wasSuccessful,
+        p_success_score: successScore
+      });
+      
+      return !error;
+    } catch (error) {
+      console.error('Error updating mission completion stats:', error);
+      return false;
+    }
   }
 };
 

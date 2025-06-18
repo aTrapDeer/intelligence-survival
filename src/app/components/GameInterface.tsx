@@ -132,7 +132,8 @@ export default function GameInterface() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          generateMission: true
+          generateMission: true,
+          userId: user?.id
         }),
       });
 
@@ -239,7 +240,8 @@ export default function GameInterface() {
           fullMissionDetails: gameState.fullMissionDetails,
           selectedOption: selectedOption,
           missionSessionId: gameState.missionSessionId,
-          roundNumber: gameState.round
+          roundNumber: gameState.round,
+          userId: user?.id
         }),
       });
 
@@ -373,7 +375,9 @@ export default function GameInterface() {
             addMessage('info', `Total Rounds: ${gameState.round}`);
             addMessage('info', `Final Threat Level: CONDITION ${threatLevel}`);
             addMessage('system', '');
-            addMessage('system', 'Type "NEW MISSION" to start a fresh operation or "QUIT" to disconnect from CIA systems.');
+            addMessage('system', 'Mission debrief complete. Type "NEW MISSION" to start a fresh operation or "QUIT" to disconnect from CIA systems.');
+            addMessage('system', '');
+            addMessage('info', '🔄 Ready for next deployment - Mission logs preserved for operational learning');
           }, 2000);
         }
       }
@@ -407,12 +411,37 @@ export default function GameInterface() {
         generateMission();
         setCurrentInput('');
       } else if (!gameState.isGameActive && gameState.missionCompleted && currentInput.toUpperCase() === 'NEW MISSION') {
+        // Reset all game state for new mission but preserve messages for operational learning
         setGameState(prev => ({ 
           ...prev, 
-          missionCompleted: false, 
-          hasMissionGenerated: false, 
-          isAwaitingMissionResponse: false 
+          round: 0,
+          isGameActive: false,
+          gameHistory: [],
+          operationalStatus: 'GREEN',
+          missionBriefing: '',
+          fullMissionDetails: '',
+          category: '',
+          context: '',
+          foreignThreat: '',
+          isGeneratingMission: false,
+          missionSessionId: null,
+          currentDecisionOptions: [],
+          isWaitingForDecision: false,
+          showCustomInput: false,
+          missionCompleted: false,
+          finalOutcome: undefined,
+          successScore: undefined,
+          hasMissionGenerated: false,
+          isAwaitingMissionResponse: false
         }));
+        
+        // Don't clear messages - keep them for operational learning
+        addMessage('system', '');
+        addMessage('system', '=== INITIATING NEW MISSION SEARCH ===');
+        addMessage('system', 'Previous mission logs retained for training purposes');
+        addMessage('system', '');
+        
+        // Start fresh mission search
         startMissionSearch();
         setCurrentInput('');
       } else if (currentInput.toUpperCase() === 'QUIT') {
@@ -649,7 +678,50 @@ export default function GameInterface() {
                   disabled={gameState.isGeneratingMission}
                   className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-900 text-green-400 border border-green-600 rounded hover:bg-green-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
                 >
-                  FIND MISSION
+                  {gameState.isGeneratingMission ? 'SEARCHING...' : 'FIND MISSION'}
+                </button>
+              )}
+              
+              {gameState.missionCompleted && (
+                <button
+                  onClick={() => {
+                    // Reset all game state for new mission but preserve messages for operational learning
+                    setGameState(prev => ({ 
+                      ...prev, 
+                      round: 0,
+                      isGameActive: false,
+                      gameHistory: [],
+                      operationalStatus: 'GREEN',
+                      missionBriefing: '',
+                      fullMissionDetails: '',
+                      category: '',
+                      context: '',
+                      foreignThreat: '',
+                      isGeneratingMission: false,
+                      missionSessionId: null,
+                      currentDecisionOptions: [],
+                      isWaitingForDecision: false,
+                      showCustomInput: false,
+                      missionCompleted: false,
+                      finalOutcome: undefined,
+                      successScore: undefined,
+                      hasMissionGenerated: false,
+                      isAwaitingMissionResponse: false
+                    }));
+                    
+                    // Add transition messages
+                    addMessage('system', '');
+                    addMessage('system', '=== INITIATING NEW MISSION SEARCH ===');
+                    addMessage('system', 'Previous mission logs retained for training purposes');
+                    addMessage('system', '');
+                    
+                    // Start fresh mission search
+                    startMissionSearch();
+                  }}
+                  disabled={gameState.isGeneratingMission}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-900 text-blue-400 border border-blue-600 rounded hover:bg-blue-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
+                >
+                  {gameState.isGeneratingMission ? 'SEARCHING...' : 'NEW MISSION'}
                 </button>
               )}
               
