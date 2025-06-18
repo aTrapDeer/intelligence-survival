@@ -34,6 +34,8 @@ interface GameState {
   missionCompleted: boolean;
   finalOutcome?: 'A' | 'B' | 'C' | 'D';
   successScore?: number;
+  hasMissionGenerated: boolean;
+  isAwaitingMissionResponse: boolean;
 }
 
 // Format classified responses for better readability
@@ -72,7 +74,9 @@ export default function GameInterface() {
     currentDecisionOptions: [],
     isWaitingForDecision: false,
     showCustomInput: false,
-    missionCompleted: false
+    missionCompleted: false,
+    hasMissionGenerated: false,
+    isAwaitingMissionResponse: false
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -94,7 +98,7 @@ export default function GameInterface() {
 
   const generateMission = async () => {
     setGameState(prev => ({ ...prev, isGeneratingMission: true }));
-    addMessage('system', '=== GENERATING CIA CLASSIFIED OPERATION ===');
+    addMessage('system', '=== SEARCHING FOR AVAILABLE MISSIONS ===');
     addMessage('system', 'Accessing CIA intelligence priorities...');
     addMessage('system', 'Analyzing threats to US national security...');
     addMessage('system', 'Establishing operational parameters...');
@@ -131,12 +135,16 @@ export default function GameInterface() {
         category: data.category,
         context: data.context,
         foreignThreat: data.foreignThreat,
-        missionSessionId: data.missionSessionId
+        missionSessionId: data.missionSessionId,
+        hasMissionGenerated: true,
+        isAwaitingMissionResponse: true
       }));
 
       addMessage('system', '');
       addMessage('classified', '=== CIA MISSION BRIEFING - CLASSIFIED ===');
       addMessage('mission', data.missionBriefing);
+      addMessage('system', '');
+      addMessage('info', 'Type "ACCEPT" to take this mission or "REJECT" to find another mission.');
 
     } catch {
       addMessage('error', 'SECURE CIA COMMUNICATION FAILURE - Unable to generate mission');
@@ -144,7 +152,7 @@ export default function GameInterface() {
     }
   };
 
-  const startGame = async () => {
+  const startMissionSearch = async () => {
     setMessages([]);
     addMessage('classified', '=== CIA CLASSIFIED TERMINAL ACCESS ===');
     addMessage('classified', 'CENTRAL INTELLIGENCE AGENCY - OPERATIONS DIRECTORATE');
@@ -251,8 +259,6 @@ export default function GameInterface() {
         // Only show operational security breach for severe violations, not minor ones
         if (!isOperationallySound && (content.includes('COMPROMISED') || content.includes('CRITICAL'))) {
           addMessage('error', 'CIA OPERATIONAL SECURITY BREACH - Approach requires revision per CIA protocols.');
-        } else if (!isOperationallySound) {
-          addMessage('info', '⚠️ CAUTION: Decision noted as non-standard by CIA protocols. Proceed with awareness.');
         }
 
         // Show decision options if mission continues
@@ -354,14 +360,20 @@ export default function GameInterface() {
       e.preventDefault();
       if (gameState.showCustomInput) {
         submitCustomInput();
-      } else if (!gameState.isGameActive && currentInput.toUpperCase() === 'ACCEPT') {
+      } else if (gameState.isAwaitingMissionResponse && currentInput.toUpperCase() === 'ACCEPT') {
         acceptMission();
         setCurrentInput('');
-      } else if (!gameState.isGameActive && currentInput.toUpperCase() === 'REGENERATE') {
+      } else if (gameState.isAwaitingMissionResponse && currentInput.toUpperCase() === 'REJECT') {
         generateMission();
         setCurrentInput('');
       } else if (!gameState.isGameActive && gameState.missionCompleted && currentInput.toUpperCase() === 'NEW MISSION') {
-        startGame();
+        setGameState(prev => ({ 
+          ...prev, 
+          missionCompleted: false, 
+          hasMissionGenerated: false, 
+          isAwaitingMissionResponse: false 
+        }));
+        startMissionSearch();
         setCurrentInput('');
       } else if (currentInput.toUpperCase() === 'QUIT') {
         window.location.reload();
@@ -567,8 +579,10 @@ export default function GameInterface() {
                 placeholder={
                   gameState.isWaitingForDecision && !gameState.showCustomInput
                     ? "Select tactical option above..."
-                    : !gameState.isGameActive && !gameState.missionCompleted
-                    ? "Type command (ACCEPT, REGENERATE, QUIT)..."
+                    : gameState.isAwaitingMissionResponse
+                    ? "Type ACCEPT or REJECT..."
+                    : !gameState.isGameActive && !gameState.missionCompleted && !gameState.hasMissionGenerated
+                    ? "Click FIND MISSION to start..."
                     : gameState.missionCompleted
                     ? "Type NEW MISSION or QUIT..."
                     : "Enter custom decision..."
@@ -578,13 +592,13 @@ export default function GameInterface() {
             </div>
             
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-0 sm:space-x-2">
-              {!gameState.isGameActive && !gameState.missionCompleted && (
+              {!gameState.isGameActive && !gameState.missionCompleted && !gameState.hasMissionGenerated && (
                 <button
-                  onClick={startGame}
+                  onClick={startMissionSearch}
                   disabled={gameState.isGeneratingMission}
                   className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-900 text-green-400 border border-green-600 rounded hover:bg-green-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
                 >
-                  START MISSION
+                  FIND MISSION
                 </button>
               )}
               
@@ -605,8 +619,10 @@ export default function GameInterface() {
               <>Mission • Round {gameState.round} • Press Enter</>
             ) : gameState.missionCompleted ? (
               <>Mission completed • Type NEW MISSION or QUIT</>
+            ) : gameState.isAwaitingMissionResponse ? (
+              <>Mission briefing displayed • Type ACCEPT or REJECT</>
             ) : (
-              <>CIA Terminal ready • START MISSION</>
+              <>CIA Terminal ready • FIND MISSION</>
             )}
           </div>
         </div>
