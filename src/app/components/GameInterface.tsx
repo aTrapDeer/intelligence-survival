@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useAuth } from './AuthProvider';
+import CharacterDashboard from './CharacterDashboard';
+import { XPResult, dbOperations, CharacterStats } from '../lib/database';
 
 interface Message {
   type: 'system' | 'user' | 'error' | 'info' | 'classified' | 'mission';
@@ -78,6 +80,9 @@ export default function GameInterface() {
     hasMissionGenerated: false,
     isAwaitingMissionResponse: false
   });
+  const [showCharacterDashboard, setShowCharacterDashboard] = useState(false);
+  const [recentXPGain, setRecentXPGain] = useState<XPResult | null>(null);
+  const [characterStats, setCharacterStats] = useState<CharacterStats | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -87,6 +92,22 @@ export default function GameInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load character stats when user is available
+  useEffect(() => {
+    const loadCharacterStats = async () => {
+      if (user) {
+        try {
+          const data = await dbOperations.getCharacterData(user.id);
+          setCharacterStats(data.stats);
+        } catch (error) {
+          console.error('Error loading character stats:', error);
+        }
+      }
+    };
+
+    loadCharacterStats();
+  }, [user, recentXPGain]); // Reload when XP changes
 
   const addMessage = (type: Message['type'], content: string) => {
     setMessages(prev => [...prev, {
@@ -251,6 +272,25 @@ export default function GameInterface() {
           isWaitingForDecision: !missionEnded && decisionOptions.length > 0,
           missionCompleted: missionEnded
         }));
+
+        // Handle XP gains
+        if (data.xpResult) {
+          setRecentXPGain(data.xpResult);
+          
+          // Show XP gain message
+          let xpMessage = `+${data.xpResult.base_xp_gained} Base XP`;
+          if (data.xpResult.skill_xp_gained) {
+            xpMessage += ` | +${data.xpResult.skill_xp_gained} ${data.xpResult.skill_name} XP`;
+          }
+          if (data.xpResult.base_level_up) {
+            xpMessage += ` | 🎉 BASE LEVEL UP! ${data.xpResult.old_base_level} → ${data.xpResult.new_base_level}`;
+          }
+          if (data.xpResult.skill_level_up) {
+            xpMessage += ` | 🎯 ${data.xpResult.skill_name?.toUpperCase()} LEVEL UP! ${data.xpResult.old_skill_level} → ${data.xpResult.new_skill_level}`;
+          }
+          
+          addMessage('info', `⚡ ${xpMessage}`);
+        }
 
         // Format and display the classified response
         const formattedContent = formatClassifiedResponse(content);
@@ -485,13 +525,24 @@ export default function GameInterface() {
                 <div className={`text-sm sm:text-lg font-bold ${getStatusColor(gameState.operationalStatus)}`}>
                   CONDITION {gameState.operationalStatus}
                 </div>
+                {characterStats && (
+                  <div className="text-xs text-blue-400">
+                    LVL {characterStats.base_level} | {characterStats.total_missions_completed} MISSIONS
+                  </div>
+                )}
                 {gameState.isGameActive && (
                   <div className="text-xs sm:text-sm text-gray-400">
                     ROUND {gameState.round} | SESSION: {gameState.missionSessionId?.slice(-8)}
                   </div>
                 )}
               </div>
-              <div className="w-full sm:w-auto">
+              <div className="w-full sm:w-auto flex gap-2">
+                <button
+                  onClick={() => setShowCharacterDashboard(true)}
+                  className="px-3 py-2 bg-blue-900/50 text-blue-300 border border-blue-600 rounded hover:bg-blue-800/50 transition-colors text-xs font-bold"
+                >
+                  📊 AGENT
+                </button>
                 <UserProfile />
               </div>
             </div>
@@ -627,6 +678,13 @@ export default function GameInterface() {
           </div>
         </div>
       </div>
+
+      {/* Character Dashboard */}
+      <CharacterDashboard 
+        isVisible={showCharacterDashboard}
+        onClose={() => setShowCharacterDashboard(false)}
+        recentXPGain={recentXPGain}
+      />
     </div>
   );
 } 

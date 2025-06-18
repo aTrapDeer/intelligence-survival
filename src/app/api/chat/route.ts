@@ -382,6 +382,14 @@ export async function POST(req: NextRequest) {
         maxRounds: estimatedRounds
       });
 
+      // Initialize character for new users (this will do nothing if already initialized)
+      if (sessionId) {
+        const session = await dbOperations.getMissionSession(sessionId);
+        if (session?.user_id) {
+          await dbOperations.initializeCharacter(session.user_id);
+        }
+      }
+
       return NextResponse.json({ 
         missionBriefing: playerBriefing,
         fullMissionDetails: fullMissionBriefing,
@@ -527,6 +535,7 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
     }
     
     // Record decision in database if we have session info
+    let xpResult = null;
     if (missionSessionId && roundNumber) {
       await dbOperations.recordDecision({
         missionSessionId,
@@ -548,6 +557,49 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         operationalStatus: threatLevel as 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED',
         missionStepsCompleted: missionSteps
       });
+
+      // Award XP based on decision quality and risk
+      const session = await dbOperations.getMissionSession(missionSessionId);
+      if (session?.user_id) {
+        // Calculate base XP
+        let baseXP = 10; // Base XP for making a decision
+        if (isOperationallySound) baseXP += 5; // Bonus for sound decisions
+        
+        // Risk-based XP bonus
+        if (riskAssessment === 'HIGH' && isOperationallySound) baseXP += 10; // Risk Taker bonus
+        else if (riskAssessment === 'MEDIUM' && isOperationallySound) baseXP += 5;
+        
+        // Determine skill XP and appropriate skill
+        const skillCode = dbOperations.determineSkillForMission(
+          session.mission_category,
+          session.mission_context,
+          session.foreign_threat,
+          riskAssessment,
+          `${missionPhase.phase} | ${missionPhase.objective}`
+        );
+        
+        const skillXP = skillCode ? Math.floor(baseXP * 0.6) : 0; // 60% of base XP goes to skill
+        
+        // XP multiplier based on success and threat level
+        let multiplier = 1.0;
+        if (threatLevel === 'RED' && isOperationallySound) multiplier = 1.2; // High stakes bonus
+        else if (threatLevel === 'GREEN') multiplier = 0.9; // Lower stakes
+        
+                 // Award XP
+         try {
+           xpResult = await dbOperations.awardXP(
+             session.user_id,
+             missionSessionId,
+             baseXP,
+             skillCode || undefined,
+             skillXP,
+             `${missionPhase.phase}: ${isOperationallySound ? 'Sound Decision' : 'Risky Decision'}`,
+             multiplier
+           );
+         } catch (error) {
+           console.error('Error awarding XP:', error);
+         }
+      }
     }
     
     // Check for mission end - enhanced detection
@@ -592,6 +644,58 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         missionOutcome: outcome,
         successScore: successScore
       });
+
+      // Award mission completion XP
+      const session = await dbOperations.getMissionSession(missionSessionId);
+      if (session?.user_id) {
+        let completionXP = 25; // Base completion XP
+        let completionMultiplier = 1.0;
+        
+        // Outcome-based XP
+        if (outcome === 'A') {
+          completionXP = 100; // Excellent success
+          completionMultiplier = 1.5;
+        } else if (outcome === 'B') {
+          completionXP = 75; // Good success
+          completionMultiplier = 1.2;
+        } else if (outcome === 'C') {
+          completionXP = 35; // Partial success
+          completionMultiplier = 1.0;
+        } else if (outcome === 'D') {
+          completionXP = 15; // Failure
+          completionMultiplier = 0.8;
+        }
+        
+        // Determine primary skill used in mission
+        const primarySkill = dbOperations.determineSkillForMission(
+          session.mission_category,
+          session.mission_context,
+          session.foreign_threat,
+          'MEDIUM',
+          'Mission Completion'
+        );
+        
+        const skillCompletionXP = primarySkill ? Math.floor(completionXP * 0.8) : 0;
+        
+        try {
+          const completionXPResult = await dbOperations.awardXP(
+            session.user_id,
+            missionSessionId,
+            completionXP,
+            primarySkill || undefined,
+            skillCompletionXP,
+            `Mission Complete: Outcome ${outcome} (${successScore}% success)`,
+            completionMultiplier
+          );
+          
+          // If we haven't awarded XP yet in this response, use the completion XP
+          if (!xpResult) {
+            xpResult = completionXPResult;
+          }
+        } catch (error) {
+          console.error('Error awarding completion XP:', error);
+        }
+      }
     }
 
     // Get mission progression suggestions if available
@@ -608,7 +712,8 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
       threatLevel,
       missionEnded: missionEnd,
       progressionSuggestions,
-      riskAssessment
+      riskAssessment,
+      xpResult
     });
 
   } catch (error) {

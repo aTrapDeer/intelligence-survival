@@ -68,6 +68,77 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+// Leveling System Interfaces
+export interface CharacterStats {
+  id: string;
+  user_id: string;
+  base_level: number;
+  base_xp: number;
+  total_missions_completed: number;
+  total_successful_missions: number;
+  reputation_score: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Skill {
+  id: number;
+  skill_code: string;
+  skill_name: string;
+  description: string;
+  icon_name: string;
+  is_toggleable: boolean;
+  created_at: string;
+}
+
+export interface UserSkill {
+  id: string;
+  user_id: string;
+  skill_id: number;
+  skill_level: number;
+  skill_xp: number;
+  is_enabled: boolean;
+  times_used: number;
+  success_rate: number;
+  created_at: string;
+  updated_at: string;
+  skill_name?: string;
+  skill_code?: string;
+  description?: string;
+  icon_name?: string;
+}
+
+export interface XPGain {
+  id: string;
+  user_id: string;
+  mission_session_id: string;
+  base_xp_gained: number;
+  skill_id?: number;
+  skill_xp_gained: number;
+  reason: string;
+  multiplier: number;
+  created_at: string;
+}
+
+export interface XPResult {
+  base_xp_gained: number;
+  base_level_up: boolean;
+  old_base_level: number;
+  new_base_level: number;
+  skill_xp_gained?: number;
+  skill_level_up?: boolean;
+  old_skill_level?: number;
+  new_skill_level?: number;
+  skill_name?: string;
+  skill_code?: string;
+}
+
+export interface LevelRequirement {
+  level: number;
+  xp_required: number;
+  xp_to_next: number;
+}
+
 export const dbOperations = {
   // Initialize database tables
   async initializeTables(): Promise<boolean> {
@@ -337,6 +408,291 @@ export const dbOperations = {
       console.error('Progression suggestions error:', error);
       return [];
     }
+  },
+
+  // Leveling System Operations
+  
+  // Initialize character for new user
+  async initializeCharacter(userId: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    try {
+      const { error } = await supabase.rpc('initialize_character', {
+        p_user_id: userId
+      });
+      
+      return !error;
+    } catch (error) {
+      console.error('Character initialization error:', error);
+      return false;
+    }
+  },
+
+  // Get character stats and skills for a user
+  async getCharacterData(userId: string): Promise<{
+    stats: CharacterStats | null;
+    skills: UserSkill[];
+  }> {
+    if (!supabase) return { stats: null, skills: [] };
+
+    try {
+      // Get character stats
+      const { data: statsData, error: statsError } = await supabase
+        .from('user_character_overview')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      // Get user skills with skill details
+      const { data: skillsData, error: skillsError } = await supabase
+        .from('user_skills_overview')
+        .select('*')
+        .eq('user_id', userId)
+        .order('skill_name');
+
+      return {
+        stats: statsError ? null : statsData,
+        skills: skillsError ? [] : skillsData
+      };
+    } catch (error) {
+      console.error('Error fetching character data:', error);
+      return { stats: null, skills: [] };
+    }
+  },
+
+  // Award XP to a user
+  async awardXP(
+    userId: string,
+    missionSessionId: string,
+    baseXP: number,
+    skillCode?: string,
+    skillXP?: number,
+    reason?: string,
+    multiplier?: number
+  ): Promise<XPResult | null> {
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase.rpc('award_xp', {
+        p_user_id: userId,
+        p_mission_session_id: missionSessionId,
+        p_base_xp: baseXP,
+        p_skill_code: skillCode || null,
+        p_skill_xp: skillXP || 0,
+        p_reason: reason || 'Mission activity',
+        p_multiplier: multiplier || 1.0
+      });
+
+      return error ? null : data;
+    } catch (error) {
+      console.error('Error awarding XP:', error);
+      return null;
+    }
+  },
+
+  // Calculate success bonus for a mission
+  async calculateSuccessBonus(
+    userId: string,
+    missionCategory: string,
+    riskLevel: string = 'MEDIUM'
+  ): Promise<number> {
+    if (!supabase) return 0;
+
+    try {
+      const { data, error } = await supabase.rpc('calculate_success_bonus', {
+        p_user_id: userId,
+        p_mission_category: missionCategory.toLowerCase(),
+        p_risk_level: riskLevel
+      });
+
+      return error ? 0 : parseFloat(data) || 0;
+    } catch (error) {
+      console.error('Error calculating success bonus:', error);
+      return 0;
+    }
+  },
+
+  // Get recent XP gains for animation
+  async getRecentXPGains(userId: string, limit: number = 10): Promise<XPGain[]> {
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('xp_gains')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      return error ? [] : data;
+    } catch (error) {
+      console.error('Error fetching XP gains:', error);
+      return [];
+    }
+  },
+
+  // Toggle skill on/off (for toggleable skills like Greatest Alley)
+  async toggleSkill(userId: string, skillCode: string, enabled: boolean): Promise<boolean> {
+    if (!supabase) return false;
+
+    try {
+      const { error } = await supabase
+        .from('user_skills')
+        .update({ is_enabled: enabled })
+        .eq('user_id', userId)
+        .eq('skill_id', supabase
+          .from('skills')
+          .select('id')
+          .eq('skill_code', skillCode)
+          .single()
+        );
+
+      return !error;
+    } catch (error) {
+      console.error('Error toggling skill:', error);
+      return false;
+    }
+  },
+
+  // Get all available skills
+  async getAllSkills(): Promise<Skill[]> {
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('skills')
+        .select('*')
+        .order('skill_name');
+
+      return error ? [] : data;
+    } catch (error) {
+      console.error('Error fetching skills:', error);
+      return [];
+    }
+  },
+
+  // Determine skill category based on mission details
+  determineSkillCategory(missionCategory: string, context: string, foreignThreat: string): string {
+    const missionText = `${missionCategory} ${context} ${foreignThreat}`.toLowerCase();
+    
+    // Technology-related missions
+    if (missionText.includes('cyber') || missionText.includes('tech') || 
+        missionText.includes('hacking') || missionText.includes('digital') ||
+        missionText.includes('computer') || missionText.includes('network')) {
+      return 'technology';
+    }
+    
+    // Military operations
+    if (missionText.includes('military') || missionText.includes('combat') ||
+        missionText.includes('warfare') || missionText.includes('tactical') ||
+        missionText.includes('weapons') || missionText.includes('armed')) {
+      return 'military';
+    }
+    
+    // Stealth operations
+    if (missionText.includes('stealth') || missionText.includes('infiltrat') ||
+        missionText.includes('covert') || missionText.includes('undercover') ||
+        missionText.includes('surveillance') || missionText.includes('reconnaissance')) {
+      return 'stealth';
+    }
+    
+    // Asset management
+    if (missionText.includes('asset') || missionText.includes('recruit') ||
+        missionText.includes('agent') || missionText.includes('operative') ||
+        missionText.includes('contact') || missionText.includes('handler')) {
+      return 'asset_management';
+    }
+    
+    // Israel/Mossad operations
+    if (missionText.includes('israel') || missionText.includes('mossad') ||
+        missionText.includes('tel aviv') || missionText.includes('jerusalem')) {
+      return 'israel';
+    }
+    
+    // Physical action
+    if (missionText.includes('physical') || missionText.includes('action') ||
+        missionText.includes('chase') || missionText.includes('pursuit') ||
+        missionText.includes('escape') || missionText.includes('fight')) {
+      return 'physical';
+    }
+    
+    // Social engineering
+    if (missionText.includes('social') || missionText.includes('manipulation') ||
+        missionText.includes('persuasion') || missionText.includes('diplomat') ||
+        missionText.includes('negotiation') || missionText.includes('influence')) {
+      return 'social';
+    }
+    
+    // Financial operations
+    if (missionText.includes('financial') || missionText.includes('economic') ||
+        missionText.includes('money') || missionText.includes('banking') ||
+        missionText.includes('funding') || missionText.includes('crypto')) {
+      return 'financial';
+    }
+    
+    // Intelligence gathering
+    if (missionText.includes('intelligence') || missionText.includes('information') ||
+        missionText.includes('data') || missionText.includes('intel') ||
+        missionText.includes('source') || missionText.includes('report')) {
+      return 'intelligence';
+    }
+    
+    return 'general';
+  },
+
+  // Determine appropriate skill for XP award
+  determineSkillForMission(
+    missionCategory: string, 
+    context: string, 
+    foreignThreat: string,
+    riskLevel: string,
+    decisionContext: string
+  ): string | null {
+    const allText = `${missionCategory} ${context} ${foreignThreat} ${decisionContext}`.toLowerCase();
+    
+    // Check for specific skill indicators
+    if (allText.includes('cyber') || allText.includes('tech') || allText.includes('hacking')) {
+      return 'q_tech';
+    }
+    
+    if (allText.includes('stealth') || allText.includes('infiltrat') || allText.includes('covert')) {
+      return 'bourne';
+    }
+    
+    if (allText.includes('military') || allText.includes('combat') || allText.includes('tactical')) {
+      return 'brody';
+    }
+    
+    if (allText.includes('asset') || allText.includes('recruit') || allText.includes('handler')) {
+      return 'carrie';
+    }
+    
+    if (allText.includes('israel') || allText.includes('mossad')) {
+      return 'greatest_alley';
+    }
+    
+    if (allText.includes('social') || allText.includes('manipulation') || allText.includes('seduc')) {
+      return 'honey_trap';
+    }
+    
+    if (allText.includes('financial') || allText.includes('crypto') || allText.includes('economic')) {
+      return 'crypto_king';
+    }
+    
+    if (allText.includes('information') || allText.includes('intelligence') || allText.includes('source')) {
+      return 'deep_throat';
+    }
+    
+    if (allText.includes('extract') || allText.includes('escape') || allText.includes('disappear')) {
+      return 'ghost_protocol';
+    }
+    
+    // High risk decisions always contribute to Risk Taker
+    if (riskLevel === 'HIGH') {
+      return 'risk_taker';
+    }
+    
+    return null;
   }
 };
 
