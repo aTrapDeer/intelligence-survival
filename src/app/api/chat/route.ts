@@ -154,7 +154,13 @@ Generate exactly 4 tactical options for the operative to choose from:
 OPTION 1: [Low-risk, conventional CIA approach - safer but may be less effective]  
 OPTION 2: [Medium-risk, creative approach - balanced risk/reward]
 OPTION 3: [High-risk, aggressive approach - potentially very effective but dangerous]
-OPTION 4: [Alternative approach - could be outside-the-box thinking or diplomatic solution]
+OPTION 4: [Alternative approach - could be outside-the-box thinking, diplomatic solution, OR REQUEST MISSION CONCLUSION if operationally appropriate]
+
+IMPORTANT OPTION 4 GUIDANCE:
+- If round >= {MAX_ROUNDS * 0.6} (past 60% of mission), OPTION 4 should often be "REQUEST MISSION CONCLUSION" 
+- This allows operatives to gracefully conclude missions when objectives are partially met
+- Format as: "REQUEST MISSION CONCLUSION: [brief reason - e.g., 'Sufficient intelligence gathered, recommend controlled extraction']"
+- This provides players agency in mission timing rather than forcing abrupt endings
 
 Each option should:
 - Be specific and actionable within current mission phase
@@ -168,6 +174,7 @@ OPSEC Reminders: [Critical security protocols for current phase]
 
 MISSION TERMINATION CONDITIONS:
 - AUTOMATIC TERMINATION: If current round >= {MAX_ROUNDS}, conclude with appropriate outcome
+- PLAYER-REQUESTED CONCLUSION: If player selects "REQUEST MISSION CONCLUSION" option
 - EARLY SUCCESS: Mission objectives achieved before max rounds
 - EARLY FAILURE: Cover blown, operative compromised, or mission critically failed
 - FORCED CONCLUSION: If mission dragging, force resolution to prevent endless gameplay
@@ -187,6 +194,7 @@ IMPORTANT:
 - Provide exactly 4 decision options unless the mission is ending
 - Force mission conclusion if at or near round limit
 - Custom user input should generally be treated as [OPERATIONALLY SOUND] if it shows good operational thinking
+- If player requests mission conclusion, provide an appropriate wrap-up with suitable outcome
 
 Reject unrealistic Hollywood-style actions. Maintain CIA documentary-level authenticity. Always remember: you are CIA, serving US national security interests.`;
 
@@ -394,7 +402,11 @@ export async function POST(req: NextRequest) {
 
       // Initialize character for new users (this will do nothing if already initialized)
       if (sessionId && userId) {
-        await dbOperations.initializeCharacter(userId);
+        console.log('🔧 Initializing character for user:', userId);
+        const initResult = await dbOperations.initializeCharacter(userId);
+        console.log('🔧 Character initialization result:', initResult);
+      } else {
+        console.log('⚠️ Missing sessionId or userId for character initialization:', { sessionId, userId });
       }
 
       return NextResponse.json({ 
@@ -570,6 +582,8 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
       // Award XP based on decision quality and risk
       const session = await dbOperations.getMissionSession(missionSessionId);
       if (session?.user_id) {
+        console.log('🎯 Awarding XP for user:', session.user_id);
+        
         // Calculate base XP
         let baseXP = 10; // Base XP for making a decision
         if (isOperationallySound) baseXP += 5; // Bonus for sound decisions
@@ -577,6 +591,8 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         // Risk-based XP bonus
         if (riskAssessment === 'HIGH' && isOperationallySound) baseXP += 10; // Risk Taker bonus
         else if (riskAssessment === 'MEDIUM' && isOperationallySound) baseXP += 5;
+        
+        console.log('🎯 Base XP calculated:', baseXP, 'for risk:', riskAssessment, 'sound:', isOperationallySound);
         
         // Determine skill XP and appropriate skill
         const skillCode = dbOperations.determineSkillForMission(
@@ -588,34 +604,43 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
         );
         
         const skillXP = skillCode ? Math.floor(baseXP * 0.6) : 0; // 60% of base XP goes to skill
+        console.log('🎯 Skill determined:', skillCode, 'XP:', skillXP);
         
         // XP multiplier based on success and threat level
         let multiplier = 1.0;
         if (threatLevel === 'RED' && isOperationallySound) multiplier = 1.2; // High stakes bonus
         else if (threatLevel === 'GREEN') multiplier = 0.9; // Lower stakes
         
-                 // Award XP
-         try {
-           xpResult = await dbOperations.awardXP(
-             session.user_id,
-             missionSessionId,
-             baseXP,
-             skillCode || undefined,
-             skillXP,
-             `${missionPhase.phase}: ${isOperationallySound ? 'Sound Decision' : 'Risky Decision'}`,
-             multiplier
-           );
-         } catch (error) {
-           console.error('Error awarding XP:', error);
-         }
+        console.log('🎯 Final XP calculation - Base:', baseXP, 'Skill:', skillXP, 'Multiplier:', multiplier);
+        
+        // Award XP
+        try {
+          console.log('🎯 Calling awardXP function...');
+          xpResult = await dbOperations.awardXP(
+            session.user_id,
+            missionSessionId,
+            baseXP,
+            skillCode || undefined,
+            skillXP,
+            `${missionPhase.phase}: ${isOperationallySound ? 'Sound Decision' : 'Risky Decision'}`,
+            multiplier
+          );
+          console.log('🎯 XP award result:', xpResult);
+        } catch (error) {
+          console.error('❌ Error awarding XP:', error);
+        }
+      } else {
+        console.log('⚠️ No session or user_id found for XP award:', { sessionFound: !!session, userId: session?.user_id });
       }
     }
     
     // Check for mission end - enhanced detection
+    const playerRequestedConclusion = message.includes('REQUEST MISSION CONCLUSION') || 
+                                     (selectedOption === 4 && decisionOptions.find(opt => opt.id === 4)?.text.includes('REQUEST MISSION CONCLUSION'));
     const missionEnd = response.includes('OUTCOME A') || response.includes('OUTCOME B') || 
                        response.includes('OUTCOME C') || response.includes('OUTCOME D') ||
                        response.includes('MISSION COMPLETE') || response.includes('OPERATION TERMINATED') ||
-                       shouldForceConclusion; // Force end if round limit reached
+                       playerRequestedConclusion || shouldForceConclusion; // Force end if round limit reached or player requested
     
     if (missionEnd && missionSessionId) {
       // Determine outcome and success score
@@ -634,6 +659,21 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
       } else if (response.includes('OUTCOME D')) {
         outcome = 'D';
         successScore = Math.floor(Math.random() * 30); // 0-30
+      } else if (playerRequestedConclusion) {
+        // Player-requested conclusion - generally better outcomes than forced conclusion
+        if (threatLevel === 'GREEN') {
+          outcome = 'A'; // Good success - player made tactical decision to conclude
+          successScore = 75 + Math.floor(Math.random() * 20); // 75-95
+        } else if (threatLevel === 'YELLOW') {
+          outcome = 'B'; // Partial success - concluded under some pressure
+          successScore = 60 + Math.floor(Math.random() * 20); // 60-80
+        } else if (threatLevel === 'ORANGE') {
+          outcome = 'C'; // Safe extraction under difficult circumstances
+          successScore = 40 + Math.floor(Math.random() * 20); // 40-60
+        } else {
+          outcome = 'D'; // Had to abort under critical conditions
+          successScore = 15 + Math.floor(Math.random() * 20); // 15-35
+        }
       } else if (shouldForceConclusion) {
         // If forced conclusion due to round limit, determine outcome based on current threat level
         if (threatLevel === 'GREEN') {

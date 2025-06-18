@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { dbOperations, CharacterStats, UserSkill, XPGain, XPResult } from '../lib/database';
 import { useAuth } from './AuthProvider';
+import { CharacterCache } from '../lib/characterCache';
 
 
 
@@ -48,27 +49,75 @@ interface XPBarProps {
 }
 
 const XPBar: React.FC<XPBarProps> = ({ currentXP, xpToNext, level, isAnimating = false, skillName }) => {
-  const percentage = xpToNext > 0 ? ((currentXP % xpToNext) / xpToNext) * 100 : 100;
+  const [animatedPercentage, setAnimatedPercentage] = useState(0);
+  const [isGaining, setIsGaining] = useState(false);
+  
+  const targetPercentage = xpToNext > 0 ? ((currentXP % xpToNext) / xpToNext) * 100 : 100;
+  const currentLevelXP = Math.floor(currentXP % xpToNext) || currentXP;
+  
+  useEffect(() => {
+    if (isAnimating) {
+      setIsGaining(true);
+      const timer = setTimeout(() => setIsGaining(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isAnimating]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimatedPercentage(targetPercentage);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [targetPercentage]);
   
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <div className="flex justify-between items-center text-xs">
-        <span className="text-gray-400">
-          {skillName ? `${skillName} Level` : 'Base Level'} {level}
+        <span className={`font-medium transition-colors ${
+          isGaining ? 'text-green-400' : 'text-gray-300'
+        }`}>
+          {skillName ? `${skillName}` : 'Base Level'} {level}
         </span>
-        <span className="text-gray-400">
-          {xpToNext > 0 ? `${Math.floor(currentXP % xpToNext)}/${xpToNext} XP` : 'MAX'}
+        <span className={`font-mono transition-colors ${
+          isGaining ? 'text-green-400' : 'text-gray-400'
+        }`}>
+          {xpToNext > 0 ? `${currentLevelXP.toLocaleString()}/${xpToNext.toLocaleString()} XP` : 'MAX LEVEL'}
         </span>
       </div>
-      <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+      <div className="relative w-full bg-gray-800 rounded-full h-3 overflow-hidden border border-gray-700">
+        {/* Background pattern */}
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-700 opacity-50" />
+        
+        {/* Progress bar */}
         <div 
-          className={`h-full transition-all duration-1000 ease-out rounded-full ${
-            isAnimating ? 'bg-gradient-to-r from-green-400 to-blue-400 animate-pulse' : 
-            skillName ? 'bg-gradient-to-r from-purple-400 to-pink-400' :
-            'bg-gradient-to-r from-blue-400 to-green-400'
+          className={`relative h-full transition-all duration-1000 ease-out rounded-full ${
+            isGaining 
+              ? 'bg-gradient-to-r from-green-400 via-green-500 to-green-600 shadow-lg shadow-green-500/50' 
+              : skillName 
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500' 
+                : 'bg-gradient-to-r from-blue-500 to-green-500'
           }`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        />
+          style={{ width: `${Math.min(animatedPercentage, 100)}%` }}
+        >
+          {/* Animated shine effect */}
+          {isGaining && (
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse rounded-full" />
+          )}
+        </div>
+        
+        {/* Overflow effect for level up */}
+        {isGaining && animatedPercentage >= 100 && (
+          <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-blue-400 animate-pulse rounded-full opacity-75" />
+        )}
+      </div>
+      
+      {/* Progress percentage */}
+      <div className="text-right">
+        <span className={`text-xs font-mono transition-colors ${
+          isGaining ? 'text-green-400' : 'text-gray-500'
+        }`}>
+          {Math.round(animatedPercentage)}%
+        </span>
       </div>
     </div>
   );
@@ -128,24 +177,132 @@ export default function CharacterDashboard({ isVisible, onClose, recentXPGain }:
   const [showLevelUpNotification, setShowLevelUpNotification] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'skills' | 'progression'>('overview');
 
-  const loadCharacterData = useCallback(async () => {
+  // Background refresh function that doesn't affect loading state
+  const backgroundRefresh = useCallback(async () => {
     if (!user) return;
     
-    setLoading(true);
+    console.log('🔄 Background refresh of character data');
+    const cache = CharacterCache.getInstance();
+    
     try {
       const [characterData, xpGains] = await Promise.all([
         dbOperations.getCharacterData(user.id),
         dbOperations.getRecentXPGains(user.id, 10)
       ]);
       
+      console.log('📊 Background refresh completed:', characterData);
       setCharacterData(characterData);
       setRecentXPGains(xpGains);
+      
+      // Update cache with fresh data
+      cache.updateCache(user.id, characterData.stats, characterData.skills);
     } catch (error) {
-      console.error('Error loading character data:', error);
-    } finally {
-      setLoading(false);
+      console.warn('⚠️ Background refresh failed:', error);
+      // Don't update UI on background refresh failure
     }
   }, [user]);
+
+  const loadCharacterData = useCallback(async (retryCount = 0, isBackgroundRefresh = false) => {
+    if (!user) return;
+    
+    console.log('📊 Loading character data for user:', user.id);
+    
+    // Don't show loading spinner for background refreshes
+    if (!isBackgroundRefresh) {
+      setLoading(true);
+    }
+    
+    const cache = CharacterCache.getInstance();
+    
+    try {
+      // Try cached data first for faster loading (only on initial load)
+      if (!isBackgroundRefresh) {
+        const cachedData = cache.getCachedData(user.id);
+        if (cachedData && retryCount === 0) {
+          console.log('📦 Using cached character data for dashboard');
+          console.log('🎯 Cached data:', { 
+            hasStats: !!cachedData.stats, 
+            skillsCount: cachedData.skills.length,
+            statsLevel: cachedData.stats?.base_level 
+          });
+          
+          setCharacterData(cachedData);
+          console.log('🎯 setCharacterData called with cached data');
+          
+          // Set loading to false immediately after setting cached data
+          console.log('🎯 About to set loading to false (before XP gains)');
+          setLoading(false);
+          console.log('🎯 setLoading(false) called (before XP gains)');
+          
+          // Still fetch XP gains (these are not cached for freshness) - but don't block the UI
+          try {
+            const xpGains = await dbOperations.getRecentXPGains(user.id, 10);
+            setRecentXPGains(xpGains);
+            console.log('🎯 XP gains loaded:', xpGains.length);
+          } catch (error) {
+            console.warn('⚠️ Could not load recent XP gains:', error);
+            setRecentXPGains([]);
+          }
+          
+          // Background refresh if cache needs updating (without affecting loading state)
+          if (cache.shouldRefresh(user.id)) {
+            console.log('🔄 Scheduling background refresh');
+            setTimeout(() => backgroundRefresh(), 100); // Small delay to ensure UI is updated
+          }
+          return;
+        } else {
+          console.log('🎯 No cached data available or retry > 0:', { hasCachedData: !!cachedData, retryCount });
+        }
+      }
+
+      // Fetch fresh data from server
+      console.log('🔄 Fetching fresh character data from server');
+      const [characterData, xpGains] = await Promise.all([
+        dbOperations.getCharacterData(user.id),
+        dbOperations.getRecentXPGains(user.id, 10)
+      ]);
+      
+      console.log('📊 Character data loaded successfully:', characterData);
+      setCharacterData(characterData);
+      setRecentXPGains(xpGains);
+      
+      // Update cache with fresh data
+      cache.updateCache(user.id, characterData.stats, characterData.skills);
+      
+    } catch (error) {
+      console.error('❌ Error loading character data:', error);
+      
+      // Try cached data as fallback (only on initial load)
+      if (!isBackgroundRefresh) {
+        const cachedData = cache.getCachedData(user.id);
+        if (cachedData) {
+          console.log('📦 Using cached data as fallback');
+          setCharacterData(cachedData);
+          setRecentXPGains([]);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Retry logic for database connection issues (only on initial load)
+      if (!isBackgroundRefresh && retryCount < 2) {
+        console.log(`🔄 Retrying character data load... (attempt ${retryCount + 1})`);
+        setTimeout(() => loadCharacterData(retryCount + 1, false), 1000);
+        return;
+      }
+      
+      // Set empty data to prevent infinite loading (only on initial load)
+      if (!isBackgroundRefresh) {
+        setCharacterData({ stats: null, skills: [] });
+        setRecentXPGains([]);
+      }
+    } finally {
+      // Only update loading state for non-background refreshes
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
+    }
+  }, [user, backgroundRefresh]);
 
   useEffect(() => {
     if (isVisible && user) {
@@ -179,6 +336,13 @@ export default function CharacterDashboard({ isVisible, onClose, recentXPGain }:
   if (!isVisible) return null;
 
   const { stats, skills } = characterData;
+  
+  console.log('🎯 CharacterDashboard render state:', { 
+    loading, 
+    hasStats: !!stats, 
+    skillsCount: skills.length,
+    isVisible 
+  });
 
   return (
     <>
@@ -247,7 +411,7 @@ export default function CharacterDashboard({ isVisible, onClose, recentXPGain }:
                         <div className="space-y-4">
                           <XPBar 
                             currentXP={stats.base_xp} 
-                            xpToNext={0}
+                            xpToNext={stats.base_xp_to_next || 1000}
                             level={stats.base_level}
                             isAnimating={recentXPGain?.base_level_up}
                           />
@@ -347,9 +511,10 @@ export default function CharacterDashboard({ isVisible, onClose, recentXPGain }:
                           
                           <XPBar 
                             currentXP={skill.skill_xp} 
-                            xpToNext={0}
+                            xpToNext={skill.skill_xp_to_next || 1000}
                             level={skill.skill_level}
                             skillName={skill.skill_name}
+                            isAnimating={recentXPGain?.skill_level_up && recentXPGain?.skill_code === skill.skill_code}
                           />
                           
                           {skill.times_used > 0 && (

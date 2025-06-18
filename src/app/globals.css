@@ -151,3 +151,47 @@ body {
   from { width: 0; }
   to { width: 100%; }
 }
+
+/* Custom XP Animation Styles */
+@keyframes slide-in-up {
+  0% {
+    transform: translateY(20px) translateX(-50%) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.95);
+  }
+}
+
+@keyframes progress-fill {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.5s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fade-out 0.5s ease-in forwards;
+}
+
+.animate-progress-fill {
+  animation: progress-fill 3s ease-out;
+}

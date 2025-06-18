@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useAuth } from './AuthProvider';
 import CharacterDashboard from './CharacterDashboard';
 import { XPResult, dbOperations, CharacterStats } from '../lib/database';
+import { CharacterCache } from '../lib/characterCache';
 
 interface Message {
   type: 'system' | 'user' | 'error' | 'info' | 'classified' | 'mission';
@@ -56,6 +57,103 @@ const formatClassifiedResponse = (content: string): string => {
     .trim();
 };
 
+// XP Overlay Animation Component
+interface XPOverlayProps {
+  xpResult: XPResult;
+  onComplete: () => void;
+}
+
+const XPOverlay: React.FC<XPOverlayProps> = ({ xpResult, onComplete }) => {
+  const [isVisible, setIsVisible] = useState(true);
+  const [animationPhase, setAnimationPhase] = useState<'enter' | 'stay' | 'exit'>('enter');
+
+  useEffect(() => {
+    const enterTimer = setTimeout(() => setAnimationPhase('stay'), 500);
+    const stayTimer = setTimeout(() => setAnimationPhase('exit'), 2500);
+    const exitTimer = setTimeout(() => {
+      setIsVisible(false);
+      onComplete();
+    }, 3500);
+
+    return () => {
+      clearTimeout(enterTimer);
+      clearTimeout(stayTimer);
+      clearTimeout(exitTimer);
+    };
+  }, [onComplete]);
+
+  if (!isVisible) return null;
+
+  const getAnimationClasses = () => {
+    switch (animationPhase) {
+      case 'enter':
+        return 'animate-slide-in-up opacity-0';
+      case 'stay':
+        return 'opacity-100 scale-100';
+      case 'exit':
+        return 'animate-fade-out scale-95 opacity-0';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none transition-all duration-500 ${getAnimationClasses()}`}>
+      <div className="bg-gradient-to-r from-green-500/90 via-blue-500/90 to-purple-500/90 backdrop-blur-md border border-green-400/50 rounded-xl p-4 shadow-2xl shadow-green-500/25">
+        <div className="flex items-center space-x-4">
+          {/* XP Icon */}
+          <div className="flex-shrink-0">
+            <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center animate-pulse">
+              <span className="text-2xl">⚡</span>
+            </div>
+          </div>
+
+          {/* XP Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-3">
+              <div className="text-white font-bold text-lg">
+                +{xpResult.base_xp_gained} XP
+              </div>
+              {xpResult.skill_xp_gained && xpResult.skill_xp_gained > 0 && (
+                <div className="text-purple-200 font-medium">
+                  +{xpResult.skill_xp_gained} {xpResult.skill_name}
+                </div>
+              )}
+            </div>
+            
+            {/* Level up indicators */}
+            {(xpResult.base_level_up || xpResult.skill_level_up) && (
+              <div className="mt-2 flex items-center space-x-2">
+                {xpResult.base_level_up && (
+                  <div className="flex items-center space-x-1 bg-blue-600/50 rounded-full px-3 py-1">
+                    <span className="text-sm">🎉</span>
+                    <span className="text-blue-200 text-sm font-medium">
+                      Level {xpResult.new_base_level}!
+                    </span>
+                  </div>
+                )}
+                {xpResult.skill_level_up && (
+                  <div className="flex items-center space-x-1 bg-purple-600/50 rounded-full px-3 py-1">
+                    <span className="text-sm">🎯</span>
+                    <span className="text-purple-200 text-sm font-medium">
+                      {xpResult.skill_name} {xpResult.new_skill_level}!
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Progress indicator */}
+        <div className="mt-3 h-1 bg-black/20 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-green-400 to-blue-400 rounded-full animate-progress-fill" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function GameInterface() {
   const { user, signOut } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -83,6 +181,7 @@ export default function GameInterface() {
   const [showCharacterDashboard, setShowCharacterDashboard] = useState(false);
   const [recentXPGain, setRecentXPGain] = useState<XPResult | null>(null);
   const [characterStats, setCharacterStats] = useState<CharacterStats | null>(null);
+  const [characterDataLoading, setCharacterDataLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -93,13 +192,71 @@ export default function GameInterface() {
     scrollToBottom();
   }, [messages]);
 
+  // Dedicated function to refresh character stats
+  const refreshCharacterStats = useCallback(async (forceRefresh = false) => {
+    if (user) {
+      const cache = CharacterCache.getInstance();
+      
+      // Try to use cached data first (unless forced refresh)
+      if (!forceRefresh) {
+        const cachedData = cache.getCachedData(user.id);
+        if (cachedData) {
+          console.log('📦 Using cached character stats');
+          setCharacterStats(cachedData.stats);
+          return;
+        }
+      }
+
+      // Fetch fresh data from server
+      try {
+        console.log('🔄 Fetching fresh character stats for user:', user.id);
+        const data = await dbOperations.getCharacterData(user.id);
+        setCharacterStats(data.stats);
+        
+        // Update cache with fresh data
+        cache.updateCache(user.id, data.stats, data.skills);
+        console.log('✅ Character stats refreshed and cached:', data.stats);
+      } catch (error) {
+        console.error('❌ Error refreshing character stats:', error);
+        
+        // Try to fall back to cached data if available
+        const cachedData = cache.getCachedData(user.id);
+        if (cachedData) {
+          console.log('📦 Falling back to cached data due to error');
+          setCharacterStats(cachedData.stats);
+        }
+      }
+    }
+  }, [user]);
+
   // Load character stats when user is available
   useEffect(() => {
     const loadCharacterStats = async () => {
       if (user) {
+        const cache = CharacterCache.getInstance();
+        
+        // Try cached data first
+        const cachedData = cache.getCachedData(user.id);
+        if (cachedData) {
+          console.log('📦 Loading character stats from cache');
+          setCharacterStats(cachedData.stats);
+          
+          // Check if we should refresh in background
+          if (cache.shouldRefresh(user.id)) {
+            console.log('🔄 Background refresh of character stats');
+            refreshCharacterStats(true); // Force refresh in background
+          }
+          return;
+        }
+
+        // No cache, fetch fresh data
         try {
+          console.log('🔄 Initial load of character stats');
           const data = await dbOperations.getCharacterData(user.id);
           setCharacterStats(data.stats);
+          
+          // Cache the fresh data
+          cache.updateCache(user.id, data.stats, data.skills);
         } catch (error) {
           console.error('Error loading character stats:', error);
         }
@@ -107,7 +264,36 @@ export default function GameInterface() {
     };
 
     loadCharacterStats();
-  }, [user, recentXPGain]); // Reload when XP changes
+  }, [user, refreshCharacterStats]); // Only depend on user, not recentXPGain
+
+  // Refresh character stats when XP is gained
+  useEffect(() => {
+    if (recentXPGain && user) {
+      console.log('🎯 XP gained, refreshing character stats:', recentXPGain);
+      
+      // Small delay to ensure database is updated, then force refresh
+      const timeoutId = setTimeout(async () => {
+        try {
+          // Fetch fresh data from server
+          console.log('🔄 Fetching updated character data after XP gain');
+          const data = await dbOperations.getCharacterData(user.id);
+          
+          // Update local state
+          setCharacterStats(data.stats);
+          
+          // Update cache with fresh data (don't clear it, replace it)
+          const cache = CharacterCache.getInstance();
+          cache.updateCache(user.id, data.stats, data.skills);
+          
+          console.log('✅ Character stats and cache updated after XP gain');
+        } catch (error) {
+          console.error('❌ Error refreshing character stats after XP gain:', error);
+        }
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [recentXPGain, user]);
 
   const addMessage = (type: Message['type'], content: string) => {
     setMessages(prev => [...prev, {
@@ -275,23 +461,10 @@ export default function GameInterface() {
           missionCompleted: missionEnded
         }));
 
-        // Handle XP gains
+        // Handle XP gains - show overlay instead of chat message
         if (data.xpResult) {
+          console.log('🎯 XP awarded in mission, setting recentXPGain:', data.xpResult);
           setRecentXPGain(data.xpResult);
-          
-          // Show XP gain message
-          let xpMessage = `+${data.xpResult.base_xp_gained} Base XP`;
-          if (data.xpResult.skill_xp_gained) {
-            xpMessage += ` | +${data.xpResult.skill_xp_gained} ${data.xpResult.skill_name} XP`;
-          }
-          if (data.xpResult.base_level_up) {
-            xpMessage += ` | 🎉 BASE LEVEL UP! ${data.xpResult.old_base_level} → ${data.xpResult.new_base_level}`;
-          }
-          if (data.xpResult.skill_level_up) {
-            xpMessage += ` | 🎯 ${data.xpResult.skill_name?.toUpperCase()} LEVEL UP! ${data.xpResult.old_skill_level} → ${data.xpResult.new_skill_level}`;
-          }
-          
-          addMessage('info', `⚡ ${xpMessage}`);
         }
 
         // Format and display the classified response
@@ -539,9 +712,11 @@ export default function GameInterface() {
     </div>
   );
 
+
+
   return (
     <div className="min-h-screen bg-black text-green-400 font-mono">
-      <div className="container mx-auto max-w-6xl p-2 sm:p-4">
+      <div className="container mx-auto max-w-none xl:max-w-7xl p-2 sm:p-4">
         {/* Header */}
         <div className="border-b border-green-600 pb-2 sm:pb-4 mb-4 sm:mb-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 lg:gap-0">
@@ -567,10 +742,16 @@ export default function GameInterface() {
               </div>
               <div className="w-full sm:w-auto flex gap-2">
                 <button
-                  onClick={() => setShowCharacterDashboard(true)}
-                  className="px-3 py-2 bg-blue-900/50 text-blue-300 border border-blue-600 rounded hover:bg-blue-800/50 transition-colors text-xs font-bold"
+                  onClick={() => {
+                    setCharacterDataLoading(true);
+                    setShowCharacterDashboard(true);
+                  }}
+                  disabled={characterDataLoading}
+                  className={`px-3 py-2 bg-blue-900/50 text-blue-300 border border-blue-600 rounded hover:bg-blue-800/50 transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed ${
+                    characterDataLoading ? 'animate-pulse' : ''
+                  }`}
                 >
-                  📊 AGENT
+                  📊 {characterDataLoading ? 'LOADING...' : 'AGENT'}
                 </button>
                 <UserProfile />
               </div>
@@ -579,7 +760,7 @@ export default function GameInterface() {
         </div>
 
         {/* Messages */}
-        <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6 max-h-[50vh] sm:max-h-[60vh] overflow-y-auto">
+        <div className="space-y-2 sm:space-y-4 mb-4 sm:mb-6 max-h-[60vh] sm:max-h-[70vh] xl:max-h-[75vh] overflow-y-auto">
           {messages.map((message, index) => (
             <div key={index} className="flex flex-col">
               <div className="text-xs text-gray-500 mb-1">
@@ -754,9 +935,25 @@ export default function GameInterface() {
       {/* Character Dashboard */}
       <CharacterDashboard 
         isVisible={showCharacterDashboard}
-        onClose={() => setShowCharacterDashboard(false)}
+        onClose={() => {
+          setShowCharacterDashboard(false);
+          setCharacterDataLoading(false);
+        }}
         recentXPGain={recentXPGain}
       />
+
+      {/* XP Overlay */}
+      {recentXPGain && (
+        <XPOverlay 
+          xpResult={recentXPGain}
+          onComplete={() => {
+            // Ensure character stats are refreshed one more time after overlay completes
+            refreshCharacterStats();
+            // Clear the XP gain after a short delay to ensure stats are updated
+            setTimeout(() => setRecentXPGain(null), 100);
+          }}
+        />
+      )}
     </div>
   );
 } 

@@ -77,6 +77,8 @@ export interface CharacterStats {
   total_missions_completed: number;
   total_successful_missions: number;
   reputation_score: number;
+  base_xp_to_next?: number; // From user_character_overview view
+  recent_xp_gains?: number; // From user_character_overview view
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +108,8 @@ export interface UserSkill {
   skill_code?: string;
   description?: string;
   icon_name?: string;
+  is_toggleable?: boolean; // From user_skills_overview view
+  skill_xp_to_next?: number; // From user_skills_overview view
 }
 
 export interface XPGain {
@@ -436,12 +440,16 @@ export const dbOperations = {
     if (!supabase) return { stats: null, skills: [] };
 
     try {
+      console.log('📊 Fetching character data for user:', userId);
+      
       // Get character stats
       const { data: statsData, error: statsError } = await supabase
         .from('user_character_overview')
         .select('*')
         .eq('user_id', userId)
         .single();
+
+      console.log('📊 Character stats query result:', { statsData, statsError });
 
       // Get user skills with skill details
       const { data: skillsData, error: skillsError } = await supabase
@@ -450,12 +458,14 @@ export const dbOperations = {
         .eq('user_id', userId)
         .order('skill_name');
 
+      console.log('📊 User skills query result:', { skillsData, skillsError });
+
       return {
         stats: statsError ? null : statsData,
         skills: skillsError ? [] : skillsData
       };
     } catch (error) {
-      console.error('Error fetching character data:', error);
+      console.error('❌ Error fetching character data:', error);
       return { stats: null, skills: [] };
     }
   },
@@ -473,6 +483,16 @@ export const dbOperations = {
     if (!supabase) return null;
 
     try {
+      console.log('🎯 Calling award_xp function with params:', {
+        userId,
+        missionSessionId,
+        baseXP,
+        skillCode,
+        skillXP,
+        reason,
+        multiplier
+      });
+      
       const { data, error } = await supabase.rpc('award_xp', {
         p_user_id: userId,
         p_mission_session_id: missionSessionId,
@@ -483,9 +503,10 @@ export const dbOperations = {
         p_multiplier: multiplier || 1.0
       });
 
+      console.log('🎯 award_xp function result:', { data, error });
       return error ? null : data;
     } catch (error) {
-      console.error('Error awarding XP:', error);
+      console.error('❌ Error awarding XP:', error);
       return null;
     }
   },
