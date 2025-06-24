@@ -432,13 +432,16 @@ function parseMissionMetadata(fullBriefing: string): {
     possibleOutcomes: []
   };
 
-  // Extract detailed phases
-  const phasesMatch = fullBriefing.match(/Mission Phases:([\s\S]*?)(?=\n\n[A-Z]|\nSuccess Criteria|\nFailure Conditions|\nFour Possible Outcomes|$)/i);
+  // Extract detailed phases - handle numbered format
+  const phasesMatch = fullBriefing.match(/(?:6\.\s*)?MISSION PHASES[^\n]*\n([\s\S]*?)(?=\n\d+\.\s*[A-Z]|\n[A-Z][A-Z\s]+:|$)/i);
   if (phasesMatch) {
     const phasesText = phasesMatch[1];
+    console.log('🔍 Found phases section:', phasesText.substring(0, 200) + '...');
+    
     const phaseMatches = phasesText.match(/Phase (\d+)[–\-\s]*([^\n]+)\n([\s\S]*?)(?=Phase \d+|$)/gi);
     
     if (phaseMatches) {
+      console.log('🔍 Found', phaseMatches.length, 'phase matches');
       phaseMatches.forEach((phaseText) => {
         const phaseHeaderMatch = phaseText.match(/Phase (\d+)[–\-\s]*([^\n]+)/i);
         if (phaseHeaderMatch) {
@@ -446,8 +449,8 @@ function parseMissionMetadata(fullBriefing: string): {
           const phaseName = phaseHeaderMatch[2].trim();
           const description = phaseText.replace(phaseHeaderMatch[0], '').trim();
           
-          // Estimate rounds based on complexity
-          const estimatedRounds = Math.max(1, Math.min(3, Math.ceil(description.length / 200)));
+          // Estimate rounds based on complexity - increased for better gameplay
+          const estimatedRounds = Math.max(2, Math.min(4, Math.ceil(description.length / 150)));
           
           // Determine threat escalation
           let threatEscalation: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
@@ -466,62 +469,91 @@ function parseMissionMetadata(fullBriefing: string): {
             threat_escalation: threatEscalation,
             critical_decisions: [] // Could be populated with AI analysis
           });
+          
+          console.log('✅ Parsed phase', phaseNumber + ':', phaseName, `(${estimatedRounds} rounds)`);
         }
       });
+    } else {
+      console.log('⚠️ No phase matches found in phases text');
     }
+  } else {
+    console.log('⚠️ No phases section found in full briefing');
   }
 
-  // Extract success criteria
-  const successMatch = fullBriefing.match(/Success Criteria:([\s\S]*?)(?=\n\n[A-Z]|\nFailure Conditions|\nFour Possible Outcomes|$)/i);
+  // Extract success criteria - handle numbered format
+  const successMatch = fullBriefing.match(/(?:7\.\s*)?SUCCESS CRITERIA[^\n]*\n([\s\S]*?)(?=\n\d+\.\s*[A-Z]|$)/i);
   if (successMatch) {
     const successText = successMatch[1];
+    console.log('🔍 Found success criteria section:', successText.substring(0, 200) + '...');
     const conditions = successText.split(/[•·\-\*]/).filter(c => c.trim().length > 10);
     metadata.successConditions = conditions.map(c => c.trim());
+    console.log('✅ Parsed', metadata.successConditions.length, 'success conditions');
+  } else {
+    console.log('⚠️ No success criteria section found');
   }
 
-  // Extract failure conditions
-  const failureMatch = fullBriefing.match(/Failure Conditions:([\s\S]*?)(?=\n\n[A-Z]|\nFour Possible Outcomes|$)/i);
+  // Extract failure conditions - handle numbered format
+  const failureMatch = fullBriefing.match(/(?:8\.\s*)?FAILURE CONDITIONS[^\n]*\n([\s\S]*?)(?=\n\d+\.\s*[A-Z]|$)/i);
   if (failureMatch) {
     const failureText = failureMatch[1];
+    console.log('🔍 Found failure conditions section:', failureText.substring(0, 200) + '...');
     const conditions = failureText.split(/[•·\-\*]/).filter(c => c.trim().length > 10);
     metadata.failureConditions = conditions.map(c => c.trim());
+    console.log('✅ Parsed', metadata.failureConditions.length, 'failure conditions');
+  } else {
+    console.log('⚠️ No failure conditions section found');
   }
 
-  // Extract possible outcomes
-  const outcomesMatch = fullBriefing.match(/Four Possible Outcomes:([\s\S]*?)$/i);
+  // Extract possible outcomes - handle numbered format
+  const outcomesMatch = fullBriefing.match(/(?:9\.\s*)?OUTCOMES[^\n]*\n([\s\S]*?)$/i);
   if (outcomesMatch) {
     const outcomesText = outcomesMatch[1];
-    const outcomeMatches = outcomesText.match(/Outcome ([A-D]) \(([^)]+)\):([\s\S]*?)(?=Outcome [A-D]|$)/gi);
+    console.log('🔍 Found outcomes section:', outcomesText.substring(0, 200) + '...');
+    const outcomeMatches = outcomesText.match(/Outcome ([A-D])[:\s]*\(([^)]+)\)[:\s]*([\s\S]*?)(?=Outcome [A-D]|$)/gi);
     
     if (outcomeMatches) {
+      console.log('🔍 Found', outcomeMatches.length, 'outcome matches');
       outcomeMatches.forEach(outcomeText => {
-        const outcomeHeaderMatch = outcomeText.match(/Outcome ([A-D]) \(([^)]+)\):([\s\S]*)/i);
+        const outcomeHeaderMatch = outcomeText.match(/Outcome ([A-D])[:\s]*\(([^)]+)\)[:\s]*([\s\S]*)/i);
         if (outcomeHeaderMatch) {
           const letter = outcomeHeaderMatch[1] as 'A' | 'B' | 'C' | 'D';
-          const name = outcomeHeaderMatch[2].trim();
+          const percentageRange = outcomeHeaderMatch[2].trim();
           const description = outcomeHeaderMatch[3].trim();
           
-          // Determine success percentage range based on outcome
+          // Extract percentage values from range like "85–100%"
+          const percentMatch = percentageRange.match(/(\d+)[–\-](\d+)%/);
           let successMin = 0, successMax = 0;
-          switch (letter) {
-            case 'A': successMin = 85; successMax = 100; break;
-            case 'B': successMin = 65; successMax = 85; break;
-            case 'C': successMin = 30; successMax = 55; break;
-            case 'D': successMin = 0; successMax = 30; break;
+          if (percentMatch) {
+            successMin = parseInt(percentMatch[1]);
+            successMax = parseInt(percentMatch[2]);
+          } else {
+            // Fallback to standard ranges
+            switch (letter) {
+              case 'A': successMin = 85; successMax = 100; break;
+              case 'B': successMin = 65; successMax = 85; break;
+              case 'C': successMin = 30; successMax = 55; break;
+              case 'D': successMin = 0; successMax = 30; break;
+            }
           }
 
           metadata.possibleOutcomes.push({
             outcome_letter: letter,
-            outcome_name: name,
+            outcome_name: percentageRange,
             description: description,
             success_percentage_min: successMin,
             success_percentage_max: successMax,
             consequences: description.split(';')[1] || '',
             narrative: description
           });
+          
+          console.log('✅ Parsed outcome', letter + ':', percentageRange, `(${successMin}-${successMax}%)`);
         }
       });
+    } else {
+      console.log('⚠️ No outcome matches found in outcomes text');
     }
+  } else {
+    console.log('⚠️ No outcomes section found');
   }
 
   return metadata;
@@ -691,9 +723,28 @@ export async function POST(req: NextRequest) {
       // Parse backend-only mission metadata
       const missionMetadata = parseMissionMetadata(fullMissionBriefing);
       
+      console.log('📊 Mission metadata parsed:', {
+        phasesFound: missionMetadata.detailedPhases.length,
+        successConditions: missionMetadata.successConditions.length,
+        failureConditions: missionMetadata.failureConditions.length,
+        outcomes: missionMetadata.possibleOutcomes.length
+      });
+      
       // Limit phases to 5-12 rounds as requested
       const limitedPhases = missionMetadata.detailedPhases.slice(0, Math.min(8, missionMetadata.detailedPhases.length));
-      const adjustedRounds = Math.max(5, Math.min(12, limitedPhases.reduce((sum, phase) => sum + phase.estimated_rounds, 0)));
+      let adjustedRounds = Math.max(8, Math.min(12, limitedPhases.reduce((sum, phase) => sum + phase.estimated_rounds, 0)));
+      
+      // If we didn't parse enough phases, default to a reasonable number
+      if (limitedPhases.length < 3) {
+        console.log('⚠️ Only found', limitedPhases.length, 'phases - defaulting to 10 rounds');
+        adjustedRounds = 10;
+      }
+      
+      console.log('📊 Final mission parameters:', {
+        phases: limitedPhases.length,
+        totalRounds: adjustedRounds,
+        avgRoundsPerPhase: limitedPhases.length > 0 ? adjustedRounds / limitedPhases.length : 0
+      });
 
       // Create mission session in database
       const sessionId = await dbOperations.createMissionSession({
@@ -1018,23 +1069,45 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
     const missionEnd = response.includes('OUTCOME A') || response.includes('OUTCOME B') || 
                        response.includes('OUTCOME C') || response.includes('OUTCOME D') ||
                        response.includes('MISSION COMPLETE') || response.includes('OPERATION TERMINATED') ||
+                       response.includes('MISSION OUTCOME: FULL SUCCESS') || 
+                       response.includes('MISSION OUTCOME: PARTIAL SUCCESS') ||
+                       response.includes('MISSION OUTCOME: TACTICAL FAILURE') ||
+                       response.includes('MISSION OUTCOME: CRITICAL FAILURE') ||
+                       response.includes('— END OF SIMULATION —') ||
                        playerRequestedConclusion || shouldForceConclusion; // Force end if round limit reached or player requested
     
     if (missionEnd && missionSessionId) {
+      console.log('🎯 Mission ending detected. Response contains:', {
+        hasOutcomeA: response.includes('OUTCOME A'),
+        hasOutcomeB: response.includes('OUTCOME B'),
+        hasOutcomeC: response.includes('OUTCOME C'),
+        hasOutcomeD: response.includes('OUTCOME D'),
+        hasFullSuccess: response.includes('MISSION OUTCOME: FULL SUCCESS'),
+        hasPartialSuccess: response.includes('MISSION OUTCOME: PARTIAL SUCCESS'),
+        hasTacticalFailure: response.includes('MISSION OUTCOME: TACTICAL FAILURE'),
+        hasCriticalFailure: response.includes('MISSION OUTCOME: CRITICAL FAILURE'),
+        hasEndSimulation: response.includes('— END OF SIMULATION —'),
+        playerRequested: playerRequestedConclusion,
+        forceConclusion: shouldForceConclusion,
+        currentRound: currentRound,
+        maxRounds: maxRounds,
+        threatLevel: threatLevel
+      });
+      
       // Determine outcome and success score
       let outcome: 'A' | 'B' | 'C' | 'D' = 'D';
       let successScore = 0;
       
-      if (response.includes('OUTCOME A')) {
+      if (response.includes('OUTCOME A') || response.includes('MISSION OUTCOME: FULL SUCCESS')) {
         outcome = 'A';
         successScore = 85 + Math.floor(Math.random() * 15); // 85-100
-      } else if (response.includes('OUTCOME B')) {
+      } else if (response.includes('OUTCOME B') || response.includes('MISSION OUTCOME: PARTIAL SUCCESS')) {
         outcome = 'B';
         successScore = 65 + Math.floor(Math.random() * 20); // 65-85
-      } else if (response.includes('OUTCOME C')) {
+      } else if (response.includes('OUTCOME C') || response.includes('MISSION OUTCOME: TACTICAL FAILURE')) {
         outcome = 'C';
         successScore = 30 + Math.floor(Math.random() * 25); // 30-55
-      } else if (response.includes('OUTCOME D')) {
+      } else if (response.includes('OUTCOME D') || response.includes('MISSION OUTCOME: CRITICAL FAILURE')) {
         outcome = 'D';
         successScore = Math.floor(Math.random() * 30); // 0-30
       } else if (playerRequestedConclusion) {
@@ -1065,6 +1138,15 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
           successScore = Math.floor(Math.random() * 25); // 0-25
         }
       }
+      
+      console.log('🎯 Final mission outcome determined:', {
+        outcome: outcome,
+        successScore: successScore,
+        reasoning: response.includes('MISSION OUTCOME: FULL SUCCESS') ? 'Full Success Detected' :
+                  response.includes('OUTCOME A') ? 'Outcome A Detected' :
+                  playerRequestedConclusion ? 'Player Requested Conclusion' :
+                  shouldForceConclusion ? 'Force Conclusion due to round limit' : 'Default fallback'
+      });
       
       await dbOperations.updateMissionSession(missionSessionId, {
         isCompleted: true,
