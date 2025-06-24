@@ -707,15 +707,29 @@ export async function POST(req: NextRequest) {
 
       // Store backend-only mission metadata
       if (sessionId) {
-        await dbOperations.createMissionMetadata({
-          missionSessionId: sessionId,
-          fullMissionBriefing: fullMissionBriefing,
-          detailedPhases: limitedPhases,
-          successConditions: missionMetadata.successConditions,
-          failureConditions: missionMetadata.failureConditions,
-          possibleOutcomes: missionMetadata.possibleOutcomes,
-          backendNotes: `Generated with ${limitedPhases.length} phases, estimated ${adjustedRounds} rounds`
-        });
+        console.log('📊 Starting mission metadata creation for session:', sessionId);
+        
+        try {
+          const metadataId = await dbOperations.createMissionMetadata({
+            missionSessionId: sessionId,
+            fullMissionBriefing: fullMissionBriefing,
+            detailedPhases: limitedPhases,
+            successConditions: missionMetadata.successConditions,
+            failureConditions: missionMetadata.failureConditions,
+            possibleOutcomes: missionMetadata.possibleOutcomes,
+            backendNotes: `Generated with ${limitedPhases.length} phases, estimated ${adjustedRounds} rounds`
+          });
+          
+          if (metadataId) {
+            console.log('✅ Mission metadata created successfully with ID:', metadataId);
+          } else {
+            console.error('❌ Mission metadata creation returned null - check database permissions');
+          }
+        } catch (error) {
+          console.error('❌ Failed to create mission metadata:', error);
+        }
+      } else {
+        console.error('❌ No sessionId available for mission metadata creation');
       }
 
       // Initialize character for new users (this will do nothing if already initialized)
