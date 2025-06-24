@@ -68,21 +68,49 @@ MISSION STRUCTURE WITH PROGRESSION PHASES:
 7. COVER IDENTITY: [CIA NOC or official cover identity]
 8. THREAT ASSESSMENT: [Hostile foreign intelligence services present]
 9. FOREIGN AGENCY INVOLVEMENT: [Which foreign services are threats/targets/allies]
-10. MISSION PHASES (5-8 distinct phases for 5-12 total rounds):
-    Design phases that will total 5-12 rounds maximum. Each phase should be 1-3 rounds.
-    PHASE 1: [Initial deployment and reconnaissance] (1-2 rounds)
-    PHASE 2: [Primary intelligence gathering or contact establishment] (1-2 rounds)
-    PHASE 3: [Operational execution or asset development] (2-3 rounds)
-    PHASE 4: [Crisis point or complication management] (1-2 rounds)
-    PHASE 5: [Mission completion or extraction] (1-2 rounds)
-    [Additional phases as needed but keep total rounds 5-12]
-11. SUCCESS CRITERIA: [Specific measurable objectives that determine mission success]
-12. FAILURE CONDITIONS: [Specific conditions that constitute mission failure]
-13. FOUR POSSIBLE OUTCOMES (each with success percentage ranges):
-    - OUTCOME A (85-100% success): [Complete mission success, all objectives achieved]
-    - OUTCOME B (65-85% success): [Partial success with minor complications]
-    - OUTCOME C (30-55% success): [Mission failure but safe extraction]
-    - OUTCOME D (0-30% success): [Critical failure with serious consequences]
+
+10. MISSION PHASES (Total: 5-12 rounds)
+Design exactly 5-8 phases that will total 5-12 rounds maximum. Each phase should be 1-3 rounds.
+
+Phase 1 – Initial Deployment & Recon (Rounds 1–2)
+R1: [Specific first round action]
+R2: [Specific second round action]
+
+Phase 2 – Asset Identification (Rounds 3–4)
+R3: [Specific third round action]
+R4: [Specific fourth round action]
+
+Phase 3 – Infiltration & Intelligence Gathering (Rounds 5–7)
+R5: [Specific fifth round action]
+R6: [Specific sixth round action]
+R7: [Specific seventh round action]
+
+Phase 4 – Crisis Management (Rounds 8–9)
+R8: [Specific eighth round action]
+R9: [Specific ninth round action]
+
+Phase 5 – Extraction & Debrief (Round 10)
+R10: [Specific final round action]
+
+11. SUCCESS CRITERIA (all must be met):
+• [Specific measurable objective 1]
+• [Specific measurable objective 2]
+• [Specific measurable objective 3]
+• [Specific measurable objective 4]
+• [Specific measurable objective 5]
+
+12. FAILURE CONDITIONS (any triggers mission failure):
+• [Specific failure condition 1]
+• [Specific failure condition 2]
+• [Specific failure condition 3]
+• [Specific failure condition 4]
+• [Specific failure condition 5]
+
+13.
+Outcome A (85–100%): [Complete success with all objectives met]
+Outcome B (65–85%): [Partial success with minor setbacks]
+Outcome C (30–55%): [Mission failure but safe extraction]
+Outcome D (0–30%): [Critical failure with serious consequences]
 
 IMPORTANT REQUIREMENTS:
 - Design mission to complete in 5-12 rounds total
@@ -206,23 +234,151 @@ Reject unrealistic Hollywood-style actions. Maintain CIA documentary-level authe
 
 // Extract player briefing (remove sensitive backend details)
 function extractPlayerBriefing(fullBriefing: string): string {
-  // Remove the four possible outcomes section
-  let briefing = fullBriefing.replace(/Four Possible Outcomes:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
+  console.log('🔒 Filtering sensitive data from mission briefing...');
   
-  // Remove success criteria section
-  briefing = briefing.replace(/Success Criteria:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
+  // Split the briefing into lines for more precise parsing
+  const lines = fullBriefing.split('\n');
+  const publicLines: string[] = [];
+  let inSensitiveSection = false;
   
-  // Remove failure conditions section
-  briefing = briefing.replace(/Failure Conditions:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const lineUpper = line.toUpperCase();
+    
+    // Check if we're entering a sensitive section
+    if (
+      lineUpper.includes('10. MISSION PHASES') ||
+      lineUpper.includes('MISSION PHASES') ||
+      lineUpper.includes('11. SUCCESS CRITERIA') ||
+      lineUpper.includes('SUCCESS CRITERIA') ||
+      lineUpper.includes('12. FAILURE CONDITIONS') ||
+      lineUpper.includes('FAILURE CONDITIONS') ||
+      lineUpper.includes('13. FOUR POSSIBLE OUTCOMES') ||
+      lineUpper.includes('FOUR POSSIBLE OUTCOMES') ||
+      lineUpper.includes('OUTCOME A') ||
+      lineUpper.includes('OUTCOME B') ||
+      lineUpper.includes('OUTCOME C') ||
+      lineUpper.includes('OUTCOME D') ||
+      lineUpper.match(/^PHASE \d+/) ||
+      lineUpper.match(/^R\d+:/) // Round-specific instructions
+    ) {
+      console.log('🔒 Filtering out sensitive section:', line);
+      inSensitiveSection = true;
+      
+      // For mission phases, we'll add a sanitized version
+      if (lineUpper.includes('MISSION PHASES')) {
+        publicLines.push('10. MISSION PHASES: [CLASSIFIED - OPERATIONAL DETAILS RESTRICTED]');
+      }
+      continue;
+    }
+    
+    // Check if we're starting a new numbered section (which would end the sensitive section)
+    if (line.match(/^\d+\.\s/) && !lineUpper.includes('MISSION PHASES') && !lineUpper.includes('SUCCESS CRITERIA') && !lineUpper.includes('FAILURE CONDITIONS') && !lineUpper.includes('FOUR POSSIBLE OUTCOMES')) {
+      inSensitiveSection = false;
+    }
+    
+    // Skip lines that are part of sensitive sections
+    if (inSensitiveSection) {
+      continue;
+    }
+    
+    // Skip empty lines that might be part of sensitive sections
+    if (line === '' && i < lines.length - 1) {
+      const nextLine = lines[i + 1]?.trim().toUpperCase() || '';
+      if (nextLine.includes('SUCCESS CRITERIA') || 
+          nextLine.includes('FAILURE CONDITIONS') || 
+          nextLine.includes('FOUR POSSIBLE OUTCOMES') ||
+          nextLine.match(/^PHASE \d+/) ||
+          nextLine.match(/^OUTCOME [A-D]/)) {
+        continue;
+      }
+    }
+    
+    // Add safe lines to public briefing
+    publicLines.push(lines[i]);
+  }
   
-  // Remove detailed phase information (keep only phase names)
-  briefing = briefing.replace(/Mission Phases:([\s\S]*?)(?=\n\n[A-Z]|\n[A-Z][a-z]+:|$)/i, (match, phases) => {
-    // Extract just the phase headers without detailed descriptions
-    const phaseHeaders = phases.match(/Phase \d+ [–-] [^\n]+/gi) || [];
-    return phaseHeaders.length > 0 ? `Mission Phases:\n${phaseHeaders.join('\n')}` : 'Mission Phases: [CLASSIFIED]';
-  });
+  const cleanedBriefing = publicLines.join('\n').trim();
   
-  return briefing.trim();
+  // Additional cleanup for any remaining sensitive patterns
+  const finalBriefing = cleanedBriefing
+    // Remove any remaining outcome references
+    .replace(/Outcome [A-D] \([^)]+\):[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/gi, '')
+    // Remove any remaining success/failure criteria
+    .replace(/(?:Success Criteria|Failure Conditions):[\s\S]*?(?=\n\n|\n\d+\.|\n[A-Z][A-Z\s]+:|$)/gi, '')
+    // Remove detailed round descriptions
+    .replace(/R\d+:.*$/gm, '')
+    // Clean up multiple empty lines
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .trim();
+  
+  console.log('✅ Mission briefing filtered. Public sections preserved, sensitive data removed.');
+  
+  return finalBriefing;
+}
+
+// Validate that sensitive data has been properly removed
+function validateMissionBriefingSecurity(briefing: string): {
+  isSecure: boolean;
+  exposedSections: string[];
+  warnings: string[];
+} {
+  const exposedSections: string[] = [];
+  const warnings: string[] = [];
+  
+  // Check for sensitive patterns that should NOT be in public briefing
+  const sensitivePatterns = [
+    { pattern: /Phase \d+ [–-].*?(?:rounds?|R\d+)/i, section: 'Detailed Phase Information' },
+    { pattern: /R\d+:/gi, section: 'Round-specific Instructions' },
+    { pattern: /Success Criteria:/i, section: 'Success Criteria' },
+    { pattern: /Failure Conditions:/i, section: 'Failure Conditions' },
+    { pattern: /Four Possible Outcomes/i, section: 'Mission Outcomes' },
+    { pattern: /Outcome [A-D] \(/i, section: 'Specific Outcomes' },
+    { pattern: /85-100%|65-85%|30-55%|0-30%/gi, section: 'Success Percentages' },
+    { pattern: /Complete mission success|Partial success|Mission failure|Critical failure/i, section: 'Outcome Descriptions' }
+  ];
+  
+  for (const { pattern, section } of sensitivePatterns) {
+    const matches = briefing.match(pattern);
+    if (matches) {
+      exposedSections.push(section);
+      warnings.push(`Found ${matches.length} instance(s) of: ${section}`);
+    }
+  }
+  
+  // Additional checks for structure
+  const lines = briefing.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().toLowerCase();
+    
+    // Check for numbered sections that might be sensitive
+    if (line.match(/^1[0-3]\./)) { // Sections 10-13 should be filtered
+      const sectionContent = lines[i].trim();
+      if (!sectionContent.includes('[CLASSIFIED') && !sectionContent.includes('[RESTRICTED')) {
+        if (sectionContent.includes('mission phases') || 
+            sectionContent.includes('success criteria') || 
+            sectionContent.includes('failure conditions') ||
+            sectionContent.includes('outcomes')) {
+          exposedSections.push('Unfiltered Sensitive Section');
+          warnings.push(`Unfiltered section found: ${sectionContent}`);
+        }
+      }
+    }
+  }
+  
+  const isSecure = exposedSections.length === 0;
+  
+  if (isSecure) {
+    console.log('✅ Mission briefing security validation passed');
+  } else {
+    console.warn('⚠️ Mission briefing security validation failed:', warnings);
+  }
+  
+  return {
+    isSecure,
+    exposedSections,
+    warnings
+  };
 }
 
 // Parse full mission briefing to extract backend-only metadata
@@ -519,6 +675,18 @@ export async function POST(req: NextRequest) {
 
       // Extract player-facing briefing (hide outcomes and internal details)
       const playerBriefing = extractPlayerBriefing(fullMissionBriefing);
+
+      // Validate that sensitive data has been properly removed
+      const securityValidation = validateMissionBriefingSecurity(playerBriefing);
+      
+      if (!securityValidation.isSecure) {
+        console.warn('⚠️ Mission briefing security validation failed:', securityValidation.warnings);
+        return NextResponse.json({
+          error: 'Mission briefing security validation failed',
+          exposedSections: securityValidation.exposedSections,
+          warnings: securityValidation.warnings
+        }, { status: 500 });
+      }
 
       // Parse backend-only mission metadata
       const missionMetadata = parseMissionMetadata(fullMissionBriefing);
