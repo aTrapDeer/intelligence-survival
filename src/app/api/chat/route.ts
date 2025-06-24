@@ -68,22 +68,28 @@ MISSION STRUCTURE WITH PROGRESSION PHASES:
 7. COVER IDENTITY: [CIA NOC or official cover identity]
 8. THREAT ASSESSMENT: [Hostile foreign intelligence services present]
 9. FOREIGN AGENCY INVOLVEMENT: [Which foreign services are threats/targets/allies]
-10. MISSION PHASES (5-8 distinct phases):
-    PHASE 1: [Initial deployment and reconnaissance]
-    PHASE 2: [Primary intelligence gathering or contact establishment]
-    PHASE 3: [Operational execution or asset development]
-    PHASE 4: [Crisis point or complication management]
-    PHASE 5: [Mission completion or extraction]
-    [Additional phases as needed based on complexity]
-11. SUCCESS CRITERIA: [Specific measurable objectives]
-12. FAILURE CONDITIONS: [What constitutes mission failure]
-13. FOUR POSSIBLE OUTCOMES:
-    - OUTCOME A: [Complete mission success, all objectives achieved]
-    - OUTCOME B: [Partial success with minor complications]
-    - OUTCOME C: [Mission failure but safe extraction]
-    - OUTCOME D: [Critical failure with serious consequences]
+10. MISSION PHASES (5-8 distinct phases for 5-12 total rounds):
+    Design phases that will total 5-12 rounds maximum. Each phase should be 1-3 rounds.
+    PHASE 1: [Initial deployment and reconnaissance] (1-2 rounds)
+    PHASE 2: [Primary intelligence gathering or contact establishment] (1-2 rounds)
+    PHASE 3: [Operational execution or asset development] (2-3 rounds)
+    PHASE 4: [Crisis point or complication management] (1-2 rounds)
+    PHASE 5: [Mission completion or extraction] (1-2 rounds)
+    [Additional phases as needed but keep total rounds 5-12]
+11. SUCCESS CRITERIA: [Specific measurable objectives that determine mission success]
+12. FAILURE CONDITIONS: [Specific conditions that constitute mission failure]
+13. FOUR POSSIBLE OUTCOMES (each with success percentage ranges):
+    - OUTCOME A (85-100% success): [Complete mission success, all objectives achieved]
+    - OUTCOME B (65-85% success): [Partial success with minor complications]
+    - OUTCOME C (30-55% success): [Mission failure but safe extraction]
+    - OUTCOME D (0-30% success): [Critical failure with serious consequences]
 
-Each phase should have distinct objectives and not repeat previous activities. The mission should flow logically from reconnaissance to execution to resolution.
+IMPORTANT REQUIREMENTS:
+- Design mission to complete in 5-12 rounds total
+- Each phase should be 1-3 rounds maximum
+- Success/failure conditions must be specific and measurable
+- Outcomes must be detailed with clear consequences
+- Include specific operational challenges for each phase
 
 CIA MISSION PRIORITIES:
 - Counterintelligence against foreign spies in US
@@ -198,38 +204,171 @@ IMPORTANT:
 
 Reject unrealistic Hollywood-style actions. Maintain CIA documentary-level authenticity. Always remember: you are CIA, serving US national security interests.`;
 
-// Extract player-facing mission briefing (hide sensitive operational details)
+// Extract player briefing (remove sensitive backend details)
 function extractPlayerBriefing(fullBriefing: string): string {
-  const lines = fullBriefing.split('\n');
-  const playerVisibleSections = [];
-  let inHiddenSection = false;
+  // Remove the four possible outcomes section
+  let briefing = fullBriefing.replace(/Four Possible Outcomes:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
   
-  for (const line of lines) {
-    // Hide outcomes section, mission phases details, and complexity details
-    if (line.includes('MISSION PHASES') || 
-        line.includes('SUCCESS CRITERIA:') ||
-        line.includes('FAILURE CONDITIONS:') ||
-        line.includes('FOUR POSSIBLE OUTCOMES:') ||
-        line.includes('OUTCOME A:') ||
-        line.includes('OUTCOME B:') ||
-        line.includes('OUTCOME C:') ||
-        line.includes('OUTCOME D:') ||
-        line.includes('PHASE 1:') ||
-        line.includes('PHASE 2:') ||
-        line.includes('PHASE 3:') ||
-        line.includes('PHASE 4:') ||
-        line.includes('PHASE 5:') ||
-        line.includes('Round-')) {
-      inHiddenSection = true;
-      continue;
-    }
+  // Remove success criteria section
+  briefing = briefing.replace(/Success Criteria:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
+  
+  // Remove failure conditions section
+  briefing = briefing.replace(/Failure Conditions:[\s\S]*?(?=\n\n|\n[A-Z]|\n$|$)/i, '');
+  
+  // Remove detailed phase information (keep only phase names)
+  briefing = briefing.replace(/Mission Phases:([\s\S]*?)(?=\n\n[A-Z]|\n[A-Z][a-z]+:|$)/i, (match, phases) => {
+    // Extract just the phase headers without detailed descriptions
+    const phaseHeaders = phases.match(/Phase \d+ [–-] [^\n]+/gi) || [];
+    return phaseHeaders.length > 0 ? `Mission Phases:\n${phaseHeaders.join('\n')}` : 'Mission Phases: [CLASSIFIED]';
+  });
+  
+  return briefing.trim();
+}
+
+// Parse full mission briefing to extract backend-only metadata
+function parseMissionMetadata(fullBriefing: string): {
+  detailedPhases: {
+    phase_number: number;
+    phase_name: string;
+    phase_objective: string;
+    description: string;
+    estimated_rounds: number;
+    threat_escalation: 'LOW' | 'MEDIUM' | 'HIGH';
+    critical_decisions: string[];
+  }[];
+  successConditions: string[];
+  failureConditions: string[];
+  possibleOutcomes: {
+    outcome_letter: 'A' | 'B' | 'C' | 'D';
+    outcome_name: string;
+    description: string;
+    success_percentage_min: number;
+    success_percentage_max: number;
+    consequences: string;
+    narrative: string;
+  }[];
+} {
+  const metadata: {
+    detailedPhases: {
+      phase_number: number;
+      phase_name: string;
+      phase_objective: string;
+      description: string;
+      estimated_rounds: number;
+      threat_escalation: 'LOW' | 'MEDIUM' | 'HIGH';
+      critical_decisions: string[];
+    }[];
+    successConditions: string[];
+    failureConditions: string[];
+    possibleOutcomes: {
+      outcome_letter: 'A' | 'B' | 'C' | 'D';
+      outcome_name: string;
+      description: string;
+      success_percentage_min: number;
+      success_percentage_max: number;
+      consequences: string;
+      narrative: string;
+    }[];
+  } = {
+    detailedPhases: [],
+    successConditions: [],
+    failureConditions: [],
+    possibleOutcomes: []
+  };
+
+  // Extract detailed phases
+  const phasesMatch = fullBriefing.match(/Mission Phases:([\s\S]*?)(?=\n\n[A-Z]|\nSuccess Criteria|\nFailure Conditions|\nFour Possible Outcomes|$)/i);
+  if (phasesMatch) {
+    const phasesText = phasesMatch[1];
+    const phaseMatches = phasesText.match(/Phase (\d+)[–\-\s]*([^\n]+)\n([\s\S]*?)(?=Phase \d+|$)/gi);
     
-    if (!inHiddenSection) {
-      playerVisibleSections.push(line);
+    if (phaseMatches) {
+      phaseMatches.forEach((phaseText) => {
+        const phaseHeaderMatch = phaseText.match(/Phase (\d+)[–\-\s]*([^\n]+)/i);
+        if (phaseHeaderMatch) {
+          const phaseNumber = parseInt(phaseHeaderMatch[1]);
+          const phaseName = phaseHeaderMatch[2].trim();
+          const description = phaseText.replace(phaseHeaderMatch[0], '').trim();
+          
+          // Estimate rounds based on complexity
+          const estimatedRounds = Math.max(1, Math.min(3, Math.ceil(description.length / 200)));
+          
+          // Determine threat escalation
+          let threatEscalation: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
+          if (description.toLowerCase().includes('crisis') || description.toLowerCase().includes('extraction') || description.toLowerCase().includes('emergency')) {
+            threatEscalation = 'HIGH';
+          } else if (description.toLowerCase().includes('reconnaissance') || description.toLowerCase().includes('initial')) {
+            threatEscalation = 'LOW';
+          }
+
+          metadata.detailedPhases.push({
+            phase_number: phaseNumber,
+            phase_name: phaseName,
+            phase_objective: description.split('\n')[0] || phaseName,
+            description: description,
+            estimated_rounds: estimatedRounds,
+            threat_escalation: threatEscalation,
+            critical_decisions: [] // Could be populated with AI analysis
+          });
+        }
+      });
     }
   }
-  
-  return playerVisibleSections.join('\n').trim();
+
+  // Extract success criteria
+  const successMatch = fullBriefing.match(/Success Criteria:([\s\S]*?)(?=\n\n[A-Z]|\nFailure Conditions|\nFour Possible Outcomes|$)/i);
+  if (successMatch) {
+    const successText = successMatch[1];
+    const conditions = successText.split(/[•·\-\*]/).filter(c => c.trim().length > 10);
+    metadata.successConditions = conditions.map(c => c.trim());
+  }
+
+  // Extract failure conditions
+  const failureMatch = fullBriefing.match(/Failure Conditions:([\s\S]*?)(?=\n\n[A-Z]|\nFour Possible Outcomes|$)/i);
+  if (failureMatch) {
+    const failureText = failureMatch[1];
+    const conditions = failureText.split(/[•·\-\*]/).filter(c => c.trim().length > 10);
+    metadata.failureConditions = conditions.map(c => c.trim());
+  }
+
+  // Extract possible outcomes
+  const outcomesMatch = fullBriefing.match(/Four Possible Outcomes:([\s\S]*?)$/i);
+  if (outcomesMatch) {
+    const outcomesText = outcomesMatch[1];
+    const outcomeMatches = outcomesText.match(/Outcome ([A-D]) \(([^)]+)\):([\s\S]*?)(?=Outcome [A-D]|$)/gi);
+    
+    if (outcomeMatches) {
+      outcomeMatches.forEach(outcomeText => {
+        const outcomeHeaderMatch = outcomeText.match(/Outcome ([A-D]) \(([^)]+)\):([\s\S]*)/i);
+        if (outcomeHeaderMatch) {
+          const letter = outcomeHeaderMatch[1] as 'A' | 'B' | 'C' | 'D';
+          const name = outcomeHeaderMatch[2].trim();
+          const description = outcomeHeaderMatch[3].trim();
+          
+          // Determine success percentage range based on outcome
+          let successMin = 0, successMax = 0;
+          switch (letter) {
+            case 'A': successMin = 85; successMax = 100; break;
+            case 'B': successMin = 65; successMax = 85; break;
+            case 'C': successMin = 30; successMax = 55; break;
+            case 'D': successMin = 0; successMax = 30; break;
+          }
+
+          metadata.possibleOutcomes.push({
+            outcome_letter: letter,
+            outcome_name: name,
+            description: description,
+            success_percentage_min: successMin,
+            success_percentage_max: successMax,
+            consequences: description.split(';')[1] || '',
+            narrative: description
+          });
+        }
+      });
+    }
+  }
+
+  return metadata;
 }
 
 // Strip decision options from response to avoid duplication in UI
@@ -326,15 +465,7 @@ function extractMissionPhase(response: string): { phase: string; objective: stri
 }
 
 // Determine estimated mission rounds based on content
-function estimateMissionRounds(missionContent: string): number {
-  // Count mission phases
-  const phaseMatches = missionContent.match(/PHASE \d+:/g);
-  const phaseCount = phaseMatches ? phaseMatches.length : 5;
-  
-  // More conservative estimate: 1-1.5 rounds per phase plus setup and conclusion
-  // Cap at 10 rounds to prevent overly long missions
-  return Math.min(Math.max(Math.ceil(phaseCount * 1.2) + 2, 6), 10);
-}
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -388,7 +519,13 @@ export async function POST(req: NextRequest) {
 
       // Extract player-facing briefing (hide outcomes and internal details)
       const playerBriefing = extractPlayerBriefing(fullMissionBriefing);
-      const estimatedRounds = estimateMissionRounds(fullMissionBriefing);
+
+      // Parse backend-only mission metadata
+      const missionMetadata = parseMissionMetadata(fullMissionBriefing);
+      
+      // Limit phases to 5-12 rounds as requested
+      const limitedPhases = missionMetadata.detailedPhases.slice(0, Math.min(8, missionMetadata.detailedPhases.length));
+      const adjustedRounds = Math.max(5, Math.min(12, limitedPhases.reduce((sum, phase) => sum + phase.estimated_rounds, 0)));
 
       // Create mission session in database
       const sessionId = await dbOperations.createMissionSession({
@@ -396,9 +533,22 @@ export async function POST(req: NextRequest) {
         category: selectedCategory,
         context: selectedContext,
         foreignThreat: hostileAgency,
-        maxRounds: estimatedRounds,
+        maxRounds: adjustedRounds,
         userId: userId
       });
+
+      // Store backend-only mission metadata
+      if (sessionId) {
+        await dbOperations.createMissionMetadata({
+          missionSessionId: sessionId,
+          fullMissionBriefing: fullMissionBriefing,
+          detailedPhases: limitedPhases,
+          successConditions: missionMetadata.successConditions,
+          failureConditions: missionMetadata.failureConditions,
+          possibleOutcomes: missionMetadata.possibleOutcomes,
+          backendNotes: `Generated with ${limitedPhases.length} phases, estimated ${adjustedRounds} rounds`
+        });
+      }
 
       // Initialize character for new users (this will do nothing if already initialized)
       if (sessionId && userId) {
@@ -411,13 +561,14 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({ 
         missionBriefing: playerBriefing,
-        fullMissionDetails: fullMissionBriefing,
+        // fullMissionDetails removed - now stored securely in backend
         agency: 'CIA',
         category: selectedCategory,
         context: selectedContext,
         foreignThreat: hostileAgency,
         missionSessionId: sessionId,
-        estimatedRounds: estimatedRounds
+        estimatedRounds: adjustedRounds,
+        totalPhases: limitedPhases.length
       });
     }
 
@@ -441,10 +592,36 @@ export async function POST(req: NextRequest) {
     const shouldForceConclusion = currentRound >= maxRounds;
     const isNearingEnd = currentRound >= Math.floor(maxRounds * 0.8);
 
+    // Get backend-only mission metadata for ChatGPT context
+    let backendContext = '';
+    if (missionSessionId) {
+      const phaseContext = await dbOperations.getCurrentPhaseContext(missionSessionId);
+      if (phaseContext) {
+        const { currentPhase, phaseProgress, successConditions, failureConditions, possibleOutcomes } = phaseContext;
+        
+        backendContext = `
+BACKEND MISSION CONTEXT (DO NOT REVEAL TO PLAYER):
+Current Phase: ${currentPhase ? `${currentPhase.phase_name} (${currentPhase.phase_objective})` : 'Unknown'}
+Phase Progress: ${Math.round(phaseProgress * 100)}% complete
+Success Conditions: ${successConditions.join('; ')}
+Failure Conditions: ${failureConditions.join('; ')}
+Possible Outcomes: ${possibleOutcomes.map(o => `${o.outcome_letter}: ${o.outcome_name}`).join('; ')}
+
+INSTRUCTIONS FOR OUTCOME DETERMINATION:
+- Monitor progress against success/failure conditions
+- Guide toward appropriate outcome (A/B/C/D) based on player decisions
+- NEVER reveal these conditions or outcomes to the player
+- Use phase objectives to determine current mission focus
+        `;
+      }
+    }
+
     // Handle gameplay interactions with enhanced tracking
     const enhancedSystemPrompt = `${GAMEPLAY_SYSTEM_PROMPT.replace('{MAX_ROUNDS}', maxRounds.toString()).replace('{CURRENT_ROUND}', currentRound.toString()).replace('{MAX_ROUNDS * 0.8}', Math.floor(maxRounds * 0.8).toString())}
 
 REMINDER: This is a FICTIONAL INTELLIGENCE SIMULATION GAME. All content is for educational/entertainment purposes only.
+
+${backendContext}
 
 FULL MISSION CONTEXT (CLASSIFIED - FOR GAME MASTER USE ONLY - FICTIONAL SIMULATION):
 ${fullMissionDetails || 'Mission context not available'}
@@ -454,19 +631,18 @@ TOTAL GAME HISTORY: ${gameHistory?.length || 0} interactions
 ${shouldForceConclusion ? '\n⚠️ MISSION TERMINATION REQUIRED - ROUND LIMIT REACHED - CONCLUDE WITH APPROPRIATE OUTCOME ⚠️' : ''}
 ${isNearingEnd ? '\n🔔 MISSION NEARING END - BEGIN CONCLUSION PHASES' : ''}
 
-Use this full mission information to:
-- Track player progress through specific mission phases
-- Evaluate decisions against current phase objectives
-- Reference threat assessments and foreign agency involvement
-- Guide narrative toward logical mission phase progression
+Use this backend information to:
+- Track player progress through mission phases (DO NOT REVEAL PHASE DETAILS)
+- Evaluate decisions against success/failure conditions (DO NOT REVEAL CONDITIONS)
+- Guide narrative toward appropriate outcome (A/B/C/D) based on performance (DO NOT REVEAL OUTCOMES)
 - Maintain consistent mission parameters throughout gameplay
 - Ensure no repetition of previous scenarios or decision points
-- Progress toward one of the four predetermined outcomes based on performance
-${shouldForceConclusion ? '- FORCE IMMEDIATE MISSION CONCLUSION WITH OUTCOME A/B/C/D' : ''}
+- Progress the narrative naturally without revealing backend structure
+${shouldForceConclusion ? '- FORCE IMMEDIATE MISSION CONCLUSION WITH APPROPRIATE OUTCOME' : ''}
 
 DECISION CONTEXT: Player selected ${selectedOption ? `Option ${selectedOption}` : 'custom input'}: "${message}"
 
-IMPORTANT: Never reveal the full mission details, phases, or outcomes to the player. Only provide immediate operational guidance and current phase information.`;
+CRITICAL: Never reveal phase structures, success/failure conditions, or possible outcomes to the player. Only provide immediate operational guidance and current situational awareness.`;
 
     const messages = [
       { role: 'system', content: enhancedSystemPrompt },
@@ -603,8 +779,28 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
           `${missionPhase.phase} | ${missionPhase.objective}`
         );
         
-        const skillXP = skillCode ? Math.floor(baseXP * 0.6) : 0; // 60% of base XP goes to skill
-        console.log('🎯 Skill determined:', skillCode, 'XP:', skillXP);
+        // Check if skill is enabled before awarding XP (especially for Greatest Alley)
+        let finalSkillCode = skillCode;
+        let skillXP = 0;
+        
+        if (skillCode) {
+          if (skillCode === 'greatest_alley') {
+            // Check if Greatest Alley is enabled
+            const isEnabled = await dbOperations.isSkillEnabled(session.user_id, 'greatest_alley');
+            if (isEnabled) {
+              skillXP = Math.floor(baseXP * 0.6); // 60% of base XP goes to skill
+              console.log('🎯 Greatest Alley enabled - awarding skill XP:', skillXP);
+            } else {
+              finalSkillCode = null; // Don't award skill XP
+              console.log('🎯 Greatest Alley disabled - no skill XP awarded');
+            }
+          } else {
+            // All other skills are always enabled
+            skillXP = Math.floor(baseXP * 0.6); // 60% of base XP goes to skill
+          }
+        }
+        
+        console.log('🎯 Final skill determined:', finalSkillCode, 'XP:', skillXP);
         
         // XP multiplier based on success and threat level
         let multiplier = 1.0;
@@ -620,7 +816,7 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
             session.user_id,
             missionSessionId,
             baseXP,
-            skillCode || undefined,
+            finalSkillCode || undefined,
             skillXP,
             `${missionPhase.phase}: ${isOperationallySound ? 'Sound Decision' : 'Risky Decision'}`,
             multiplier
@@ -734,14 +930,33 @@ OPSEC Reminders: Maintain cover identity and avoid exposure during communication
           'Mission Completion'
         );
         
-        const skillCompletionXP = primarySkill ? Math.floor(completionXP * 0.8) : 0;
+        // Check if primary skill is enabled (especially for Greatest Alley)
+        let finalPrimarySkill = primarySkill;
+        let skillCompletionXP = 0;
+        
+        if (primarySkill) {
+          if (primarySkill === 'greatest_alley') {
+            // Check if Greatest Alley is enabled
+            const isEnabled = await dbOperations.isSkillEnabled(missionSessionForXP.user_id, 'greatest_alley');
+            if (isEnabled) {
+              skillCompletionXP = Math.floor(completionXP * 0.8);
+              console.log('🎯 Mission completion: Greatest Alley enabled - awarding skill XP:', skillCompletionXP);
+            } else {
+              finalPrimarySkill = null; // Don't award skill XP
+              console.log('🎯 Mission completion: Greatest Alley disabled - no skill XP awarded');
+            }
+          } else {
+            // All other skills are always enabled
+            skillCompletionXP = Math.floor(completionXP * 0.8);
+          }
+        }
         
         try {
           const completionXPResult = await dbOperations.awardXP(
             missionSessionForXP.user_id,
             missionSessionId,
             completionXP,
-            primarySkill || undefined,
+            finalPrimarySkill || undefined,
             skillCompletionXP,
             `Mission Complete: Outcome ${outcome} (${successScore}% success)`,
             completionMultiplier

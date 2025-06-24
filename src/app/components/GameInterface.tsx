@@ -57,6 +57,129 @@ const formatClassifiedResponse = (content: string): string => {
     .trim();
 };
 
+interface MissionAnalysis {
+  status: string;
+  rating: string;
+  feedback: string[];
+  feedbackIcons: string[];
+  lessons: string[];
+}
+
+// Generate detailed mission analysis based on performance
+const generateMissionAnalysis = (
+  outcome: 'A' | 'B' | 'C' | 'D', 
+  successScore: number, 
+  rounds: number, 
+  threatLevel: string
+): MissionAnalysis => {
+  const feedback: string[] = [];
+  const feedbackIcons: string[] = [];
+  const lessons: string[] = [];
+  
+  // Determine overall status and rating
+  let status = '';
+  let rating = '';
+  
+  if (successScore >= 85) {
+    status = 'MISSION ACCOMPLISHED';
+    rating = 'EXCEPTIONAL';
+  } else if (successScore >= 65) {
+    status = 'PARTIAL SUCCESS';
+    rating = 'SATISFACTORY';
+  } else if (successScore >= 30) {
+    status = 'MISSION COMPROMISED';
+    rating = 'BELOW STANDARD';
+  } else {
+    status = 'OPERATION FAILED';
+    rating = 'UNSATISFACTORY';
+  }
+  
+  // Analyze performance factors
+  if (successScore >= 85) {
+    feedback.push('Outstanding operational execution demonstrated');
+    feedbackIcons.push('✅');
+    feedback.push('All primary objectives achieved with minimal exposure');
+    feedbackIcons.push('🎯');
+    lessons.push('Excellent strategic planning and tactical execution');
+    lessons.push('Operational security protocols followed effectively');
+  } else if (successScore >= 65) {
+    feedback.push('Mission objectives partially achieved');
+    feedbackIcons.push('⚠️');
+    feedback.push('Some operational complications encountered');
+    feedbackIcons.push('📊');
+    lessons.push('Room for improvement in tactical decision-making');
+    lessons.push('Consider more aggressive operational tempo in future missions');
+  } else if (successScore >= 30) {
+    feedback.push('Significant operational challenges faced');
+    feedbackIcons.push('⚠️');
+    feedback.push('Mission security compromised but extraction successful');
+    feedbackIcons.push('🛡️');
+    lessons.push('Review decision-making process for high-stakes scenarios');
+    lessons.push('Enhanced threat assessment protocols recommended');
+  } else {
+    feedback.push('Critical mission failures across multiple domains');
+    feedbackIcons.push('❌');
+    feedback.push('Operational security breached with potential consequences');
+    feedbackIcons.push('🚨');
+    lessons.push('Comprehensive operational review required');
+    lessons.push('Additional training recommended before next deployment');
+  }
+  
+  // Analyze threat escalation
+  if (threatLevel === 'RED') {
+    feedback.push('Mission concluded under extreme threat conditions');
+    feedbackIcons.push('🔴');
+    lessons.push('Threat de-escalation techniques need refinement');
+  } else if (threatLevel === 'ORANGE') {
+    feedback.push('Elevated threat level managed during operation');
+    feedbackIcons.push('🟠');
+    lessons.push('Improved situational awareness could prevent threat escalation');
+  } else if (threatLevel === 'YELLOW') {
+    feedback.push('Moderate threat environment throughout mission');
+    feedbackIcons.push('🟡');
+    lessons.push('Steady operational tempo maintained under pressure');
+  } else {
+    feedback.push('Optimal threat management maintained');
+    feedbackIcons.push('🟢');
+    lessons.push('Excellent operational security demonstrated');
+  }
+  
+  // Analyze mission duration
+  if (rounds <= 5) {
+    feedback.push('Mission completed with exceptional efficiency');
+    feedbackIcons.push('⚡');
+    lessons.push('Rapid decision-making and execution demonstrated');
+  } else if (rounds <= 8) {
+    feedback.push('Mission duration within acceptable parameters');
+    feedbackIcons.push('⏱️');
+    lessons.push('Balanced approach to operational tempo');
+  } else {
+    feedback.push('Extended operational timeline may have increased exposure risk');
+    feedbackIcons.push('⏳');
+    lessons.push('Consider more decisive action in future operations');
+  }
+  
+  // Add outcome-specific analysis
+  if (outcome === 'D' && successScore < 20) {
+    lessons.push('Critical failure analysis required - recommend stand-down period');
+    lessons.push('Operational protocols may need comprehensive revision');
+  } else if (outcome === 'C' && threatLevel === 'RED') {
+    lessons.push('Safe extraction under hostile conditions shows good judgment');
+    lessons.push('Risk assessment capabilities demonstrated despite setbacks');
+  } else if (outcome === 'A' && rounds <= 6) {
+    lessons.push('Exceptional performance - suitable for advanced operations');
+    lessons.push('Consider for fast-track career development');
+  }
+  
+  return {
+    status,
+    rating,
+    feedback,
+    feedbackIcons,
+    lessons
+  };
+};
+
 // XP Overlay Animation Component
 interface XPOverlayProps {
   xpResult: XPResult;
@@ -502,33 +625,33 @@ export default function GameInterface() {
           if (content.includes('OUTCOME A')) {
             outcome = 'A';
             successScore = 90;
-            addMessage('info', '🎯 MISSION SUCCESS - OUTCOME A: Objectives achieved with minimal exposure');
+            addMessage('info', '🎯 MISSION SUCCESS: Objectives achieved with minimal exposure');
           } else if (content.includes('OUTCOME B')) {
             outcome = 'B';
             successScore = 70;
-            addMessage('info', '✅ PARTIAL SUCCESS - OUTCOME B: Mission completed with complications');
+            addMessage('info', '✅ PARTIAL SUCCESS: Mission completed with complications');
           } else if (content.includes('OUTCOME C')) {
             outcome = 'C';
             successScore = 40;
-            addMessage('info', '⚠️ MISSION FAILURE - OUTCOME C: Operative extracted safely');
+            addMessage('info', '⚠️ MISSION COMPROMISED: Operative extracted safely');
           } else if (content.includes('OUTCOME D')) {
             outcome = 'D';
             successScore = 10;
-            addMessage('error', '❌ CRITICAL FAILURE - OUTCOME D: Serious consequences for US interests');
+            addMessage('error', '❌ CRITICAL FAILURE: Serious consequences for US interests');
           } else {
             // Handle cases where mission ended due to round limit or other factors
             if (threatLevel === 'GREEN') {
               outcome = 'B';
               successScore = 65;
-              addMessage('info', '✅ MISSION TIMEOUT - OUTCOME B: Time limit reached, partial objectives achieved');
+              addMessage('info', '✅ MISSION TIMEOUT: Time limit reached, partial objectives achieved');
             } else if (threatLevel === 'YELLOW') {
               outcome = 'C';
               successScore = 40;
-              addMessage('info', '⚠️ MISSION TIMEOUT - OUTCOME C: Time limit reached, safe extraction');
+              addMessage('info', '⚠️ MISSION TIMEOUT: Time limit reached, safe extraction');
             } else {
               outcome = 'D';
               successScore = 15;
-              addMessage('error', '❌ MISSION TIMEOUT - OUTCOME D: Time limit reached under compromised conditions');
+              addMessage('error', '❌ MISSION TIMEOUT: Time limit reached under compromised conditions');
             }
           }
 
@@ -539,18 +662,40 @@ export default function GameInterface() {
             isGameActive: false
           }));
 
-          // Show mission statistics
+          // Show enhanced mission analysis
           setTimeout(() => {
+            const missionAnalysis = generateMissionAnalysis(outcome, successScore, gameState.round, threatLevel);
+            
             addMessage('system', '');
-            addMessage('info', '=== MISSION STATISTICS ===');
-            addMessage('info', `Mission Outcome: ${outcome}`);
-            addMessage('info', `Success Score: ${successScore}/100`);
-            addMessage('info', `Total Rounds: ${gameState.round}`);
+            addMessage('info', '=== MISSION DEBRIEF ===');
+            addMessage('info', `Operation Status: ${missionAnalysis.status}`);
+            addMessage('info', `Success Rating: ${successScore}/100 (${missionAnalysis.rating})`);
+            addMessage('info', `Mission Duration: ${gameState.round} operational rounds`);
             addMessage('info', `Final Threat Level: CONDITION ${threatLevel}`);
             addMessage('system', '');
-            addMessage('system', 'Mission debrief complete. Type "NEW MISSION" to start a fresh operation or "QUIT" to disconnect from CIA systems.');
-            addMessage('system', '');
-            addMessage('info', '🔄 Ready for next deployment - Mission logs preserved for operational learning');
+            addMessage('info', '--- PERFORMANCE ANALYSIS ---');
+            missionAnalysis.feedback.forEach((feedback, index) => {
+              setTimeout(() => {
+                addMessage('info', `${missionAnalysis.feedbackIcons[index]} ${feedback}`);
+              }, 500 * (index + 1));
+            });
+            
+            setTimeout(() => {
+              addMessage('system', '');
+              addMessage('info', '--- LESSONS LEARNED ---');
+              missionAnalysis.lessons.forEach((lesson, index) => {
+                setTimeout(() => {
+                  addMessage('info', `• ${lesson}`);
+                }, 200 * (index + 1));
+              });
+              
+              setTimeout(() => {
+                addMessage('system', '');
+                addMessage('system', 'Mission debrief complete. Type "NEW MISSION" to start a fresh operation or "QUIT" to disconnect from CIA systems.');
+                addMessage('system', '');
+                addMessage('info', '🔄 Ready for next deployment - Mission logs preserved for operational learning');
+              }, 1000 + (missionAnalysis.lessons.length * 200));
+            }, 1500 + (missionAnalysis.feedback.length * 500));
           }, 2000);
         }
       }

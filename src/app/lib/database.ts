@@ -26,6 +26,42 @@ export interface MissionSession {
   updated_at: string;
 }
 
+// Backend-only mission metadata - NEVER expose to frontend
+export interface MissionMetadata {
+  id: string;
+  mission_session_id: string;
+  full_mission_briefing: string; // Complete briefing with all details
+  detailed_phases: MissionPhase[]; // Structured phase data
+  success_conditions: string[]; // Specific success criteria
+  failure_conditions: string[]; // Specific failure criteria  
+  possible_outcomes: MissionOutcome[]; // All 4 possible outcomes with details
+  current_phase_index: number; // Current phase (0-based)
+  phase_objectives_completed: string[]; // Completed phase objectives
+  backend_notes: string; // Additional GM notes
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MissionPhase {
+  phase_number: number;
+  phase_name: string;
+  phase_objective: string;
+  description: string;
+  estimated_rounds: number;
+  threat_escalation: 'LOW' | 'MEDIUM' | 'HIGH';
+  critical_decisions: string[];
+}
+
+export interface MissionOutcome {
+  outcome_letter: 'A' | 'B' | 'C' | 'D';
+  outcome_name: string;
+  description: string;
+  success_percentage_min: number;
+  success_percentage_max: number;
+  consequences: string;
+  narrative: string;
+}
+
 export interface UserDecision {
   id: string;
   mission_session_id: string;
@@ -552,26 +588,70 @@ export const dbOperations = {
     }
   },
 
-  // Toggle skill on/off (for toggleable skills like Greatest Alley)
+  // Toggle skill on/off (only for toggleable skills like Greatest Alley)
   async toggleSkill(userId: string, skillCode: string, enabled: boolean): Promise<boolean> {
     if (!supabase) return false;
 
     try {
+      // First verify the skill is toggleable
+      const { data: skill, error: skillError } = await supabase
+        .from('skills')
+        .select('id, is_toggleable')
+        .eq('skill_code', skillCode)
+        .single();
+
+      if (skillError || !skill) {
+        console.error('Skill not found:', skillCode);
+        return false;
+      }
+
+      if (!skill.is_toggleable) {
+        console.error('Skill is not toggleable:', skillCode);
+        return false;
+      }
+
       const { error } = await supabase
         .from('user_skills')
         .update({ is_enabled: enabled })
+        .eq('user_id', userId)
+        .eq('skill_id', skill.id);
+
+      return !error;
+    } catch (error) {
+      console.error('Error toggling skill:', error);
+      return false;
+    }
+  },
+
+  // Check if a specific skill is enabled for a user
+  async isSkillEnabled(userId: string, skillCode: string): Promise<boolean> {
+    if (!supabase) return true; // Default to enabled if no database
+
+    try {
+      const { data, error } = await supabase
+        .from('user_skills')
+        .select('is_enabled')
         .eq('user_id', userId)
         .eq('skill_id', supabase
           .from('skills')
           .select('id')
           .eq('skill_code', skillCode)
           .single()
-        );
+        )
+        .single();
 
-      return !error;
+      if (error || !data) {
+        // If user doesn't have this skill yet, default based on skill type
+        if (skillCode === 'greatest_alley') {
+          return false; // Greatest Alley starts disabled
+        }
+        return true; // All other skills start enabled
+      }
+
+      return data.is_enabled;
     } catch (error) {
-      console.error('Error toggling skill:', error);
-      return false;
+      console.error('Error checking skill enablement:', error);
+      return true; // Default to enabled on error
     }
   },
 
@@ -738,6 +818,101 @@ export const dbOperations = {
       console.error('Error updating mission completion stats:', error);
       return false;
     }
+  },
+
+  // Backend-only mission metadata operations
+  async createMissionMetadata(metadataData: {
+    missionSessionId: string;
+    fullMissionBriefing: string;
+    detailedPhases: MissionPhase[];
+    successConditions: string[];
+    failureConditions: string[];
+    possibleOutcomes: MissionOutcome[];
+    backendNotes?: string;
+  }): Promise<string | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('mission_metadata')
+      .insert([
+        {
+          mission_session_id: metadataData.missionSessionId,
+          full_mission_briefing: metadataData.fullMissionBriefing,
+          detailed_phases: metadataData.detailedPhases,
+          success_conditions: metadataData.successConditions,
+          failure_conditions: metadataData.failureConditions,
+          possible_outcomes: metadataData.possibleOutcomes,
+          current_phase_index: 0,
+          phase_objectives_completed: [],
+          backend_notes: metadataData.backendNotes || '',
+        },
+      ])
+      .select()
+      .single();
+
+    return error ? null : data.id;
+  },
+
+  // Get backend-only mission metadata (NEVER expose to frontend)
+  async getMissionMetadata(missionSessionId: string): Promise<MissionMetadata | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('mission_metadata')
+      .select('*')
+      .eq('mission_session_id', missionSessionId)
+      .single();
+
+    return error ? null : data;
+  },
+
+  // Update mission metadata progress
+  async updateMissionMetadata(
+    missionSessionId: string,
+    updates: {
+      currentPhaseIndex?: number;
+      phaseObjectivesCompleted?: string[];
+      backendNotes?: string;
+    }
+  ): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('mission_metadata')
+      .update({
+        current_phase_index: updates.currentPhaseIndex,
+        phase_objectives_completed: updates.phaseObjectivesCompleted,
+        backend_notes: updates.backendNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('mission_session_id', missionSessionId);
+
+    return !error;
+  },
+
+  // Get current phase information for ChatGPT (without exposing to user)
+  async getCurrentPhaseContext(missionSessionId: string): Promise<{
+    currentPhase: MissionPhase | null;
+    phaseProgress: number;
+    successConditions: string[];
+    failureConditions: string[];
+    possibleOutcomes: MissionOutcome[];
+  } | null> {
+    if (!supabase) return null;
+
+    const metadata = await this.getMissionMetadata(missionSessionId);
+    if (!metadata) return null;
+
+    const currentPhase = metadata.detailed_phases[metadata.current_phase_index] || null;
+    const phaseProgress = metadata.current_phase_index / metadata.detailed_phases.length;
+
+    return {
+      currentPhase,
+      phaseProgress,
+      successConditions: metadata.success_conditions,
+      failureConditions: metadata.failure_conditions,
+      possibleOutcomes: metadata.possible_outcomes,
+    };
   }
 };
 

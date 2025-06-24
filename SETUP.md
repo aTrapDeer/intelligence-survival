@@ -112,18 +112,7 @@ CREATE TABLE IF NOT EXISTS mission_sessions (
 );
 
 -- User Decisions Table
-CREATE TABLE IF NOT EXISTS user_decisions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  mission_session_id UUID REFERENCES mission_sessions(id) ON DELETE CASCADE,
-  round_number INTEGER NOT NULL,
-  decision_type TEXT NOT NULL CHECK (decision_type IN ('OPTION_SELECTED', 'CUSTOM_INPUT')),
-  selected_option INTEGER CHECK (selected_option IN (1, 2, 3, 4)),
-  custom_input TEXT,
-  ai_response TEXT NOT NULL,
-  was_operationally_sound BOOLEAN NOT NULL,
-  threat_level_after TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+np
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON user_profiles(email);
