@@ -82,6 +82,26 @@ CREATE INDEX IF NOT EXISTS idx_user_decisions_round ON user_decisions(round_numb
 CREATE INDEX IF NOT EXISTS idx_user_decisions_type ON user_decisions(decision_type);
 CREATE INDEX IF NOT EXISTS idx_user_decisions_risk ON user_decisions(risk_assessment);
 
+-- Mission Metadata Table (Backend-only sensitive data)
+CREATE TABLE IF NOT EXISTS mission_metadata (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  mission_session_id UUID NOT NULL REFERENCES mission_sessions(id) ON DELETE CASCADE,
+  full_mission_briefing TEXT NOT NULL,
+  detailed_phases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  success_conditions TEXT[] NOT NULL DEFAULT '{}'::text[],
+  failure_conditions TEXT[] NOT NULL DEFAULT '{}'::text[],
+  possible_outcomes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  current_phase_index INTEGER NOT NULL DEFAULT 0,
+  phase_objectives_completed TEXT[] NOT NULL DEFAULT '{}'::text[],
+  backend_notes TEXT NOT NULL DEFAULT ''::text,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for mission_metadata
+CREATE INDEX IF NOT EXISTS idx_mission_metadata_session_id ON mission_metadata(mission_session_id);
+CREATE INDEX IF NOT EXISTS idx_mission_metadata_current_phase ON mission_metadata(current_phase_index);
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -91,12 +111,36 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Trigger for automatic updated_at
+-- Function to update mission_metadata updated_at timestamp
+CREATE OR REPLACE FUNCTION update_mission_metadata_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger for automatic updated_at on mission_sessions
 DROP TRIGGER IF EXISTS update_mission_sessions_updated_at ON mission_sessions;
 CREATE TRIGGER update_mission_sessions_updated_at
     BEFORE UPDATE ON mission_sessions
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for automatic updated_at on mission_metadata
+DROP TRIGGER IF EXISTS trigger_mission_metadata_updated_at ON mission_metadata;
+CREATE TRIGGER trigger_mission_metadata_updated_at
+    BEFORE UPDATE ON mission_metadata
+    FOR EACH ROW
+    EXECUTE FUNCTION update_mission_metadata_updated_at();
+
+-- Enable Row Level Security on mission_metadata (backend-only access)
+ALTER TABLE mission_metadata ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Only allow backend operations (no direct frontend access)
+DROP POLICY IF EXISTS "Backend only access" ON mission_metadata;
+CREATE POLICY "Backend only access" ON mission_metadata
+    FOR ALL USING (false);
 
 -- Function to update mission completion stats
 CREATE OR REPLACE FUNCTION update_mission_completion_stats(
