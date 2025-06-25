@@ -31,6 +31,7 @@ interface GameState {
   foreignThreat: string;
   isGeneratingMission: boolean;
   missionSessionId: string | null;
+  maxRounds: number;
   currentDecisionOptions: DecisionOption[];
   isWaitingForDecision: boolean;
   showCustomInput: boolean;
@@ -294,6 +295,7 @@ export default function GameInterface() {
     foreignThreat: '',
     isGeneratingMission: false,
     missionSessionId: null,
+    maxRounds: 10,
     currentDecisionOptions: [],
     isWaitingForDecision: false,
     showCustomInput: false,
@@ -467,6 +469,7 @@ export default function GameInterface() {
         context: data.context,
         foreignThreat: data.foreignThreat,
         missionSessionId: data.missionSessionId,
+        maxRounds: data.estimatedRounds || 10,
         hasMissionGenerated: true,
         isAwaitingMissionResponse: true
       }));
@@ -605,9 +608,11 @@ export default function GameInterface() {
           addMessage('info', '=== TACTICAL DECISION REQUIRED ===');
           
           // Check if mission is approaching time limit
-          if (gameState.round >= 8) {
+          const roundLimit = gameState.maxRounds || 10;
+          const nextRound = gameState.round + 1; // Account for the round that will be set
+          if (nextRound >= roundLimit) {
             addMessage('info', '⏰ WARNING: Mission timeline critical - immediate resolution required');
-          } else if (gameState.round >= 6) {
+          } else if (nextRound >= Math.max(1, roundLimit - 2)) {
             addMessage('info', '🔔 NOTICE: Mission approaching time constraints - begin conclusion phases');
           }
           
@@ -640,18 +645,42 @@ export default function GameInterface() {
             addMessage('error', '❌ CRITICAL FAILURE: Serious consequences for US interests');
           } else {
             // Handle cases where mission ended due to round limit or other factors
+            // Consider both threat level AND mission progress/content for better scoring
+            const missionProgress = content.toLowerCase();
+            const hasGoodProgress = missionProgress.includes('successful') || 
+                                   missionProgress.includes('achieved') || 
+                                   missionProgress.includes('completed') ||
+                                   missionProgress.includes('secured') ||
+                                   content.includes('60%') || content.includes('70%') || content.includes('80%');
+            
             if (threatLevel === 'GREEN') {
               outcome = 'B';
-              successScore = 65;
+              successScore = 75;
               addMessage('info', '✅ MISSION TIMEOUT: Time limit reached, partial objectives achieved');
             } else if (threatLevel === 'YELLOW') {
-              outcome = 'C';
-              successScore = 40;
-              addMessage('info', '⚠️ MISSION TIMEOUT: Time limit reached, safe extraction');
-            } else {
+              if (hasGoodProgress) {
+                outcome = 'B';
+                successScore = 65;
+                addMessage('info', '✅ MISSION TIMEOUT: Time limit reached, good progress achieved');
+              } else {
+                outcome = 'C';
+                successScore = 45;
+                addMessage('info', '⚠️ MISSION TIMEOUT: Time limit reached, safe extraction');
+              }
+            } else if (threatLevel === 'ORANGE') {
+              if (hasGoodProgress) {
+                outcome = 'C';
+                successScore = 50;
+                addMessage('info', '⚠️ MISSION TIMEOUT: Time limit reached, partial success under pressure');
+              } else {
+                outcome = 'D';
+                successScore = 25;
+                addMessage('error', '❌ MISSION TIMEOUT: Time limit reached under compromised conditions');
+              }
+            } else { // RED
               outcome = 'D';
-              successScore = 15;
-              addMessage('error', '❌ MISSION TIMEOUT: Time limit reached under compromised conditions');
+              successScore = 10;
+              addMessage('error', '❌ MISSION TIMEOUT: Time limit reached under hostile conditions');
             }
           }
 
@@ -743,6 +772,7 @@ export default function GameInterface() {
           foreignThreat: '',
           isGeneratingMission: false,
           missionSessionId: null,
+          maxRounds: 10,
           currentDecisionOptions: [],
           isWaitingForDecision: false,
           showCustomInput: false,
